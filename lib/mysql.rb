@@ -58,6 +58,7 @@ class Mysql
   attr_reader :warning_count         #
   attr_reader :server_version        #
   attr_reader :protocol              #
+  attr_reader :sqlstate
 
   def self.new(*args, &block)  # :nodoc:
     my = self.allocate
@@ -120,6 +121,7 @@ class Mysql
     @init_command = nil
     @affected_rows = nil
     @server_version = nil
+    @sqlstate = "00000"
     @param, opt = conninfo *args
     @connected = false
     set_option opt
@@ -217,15 +219,20 @@ class Mysql
     @affected_rows = @insert_id = @server_status = @warning_count = 0
     @fields = nil
     @protocol.synchronize do
-      @protocol.reset
-      @protocol.send_packet Protocol::QueryPacket.new @charset.convert(str)
-      res_packet = @protocol.read_result_packet
-      if res_packet.field_count == 0
-        @affected_rows, @insert_id, @server_status, @warning_conut =
-          res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
-      else
-        @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
-        @protocol.read_eof_packet
+      begin
+        @protocol.reset
+        @protocol.send_packet Protocol::QueryPacket.new @charset.convert(str)
+        res_packet = @protocol.read_result_packet
+        if res_packet.field_count == 0
+          @affected_rows, @insert_id, @server_status, @warning_conut =
+            res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
+        else
+          @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+          @protocol.read_eof_packet
+        end
+      rescue ServerError => e
+        @sqlstate = e.sqlstate
+        raise
       end
       if block
         yield Result.new(self, @fields)

@@ -8,7 +8,7 @@ Gem::Specification.new do |s|
   s.description = %q{MySQL connector for Ruby}
   s.email = %q{tommy@tmtm.org}
   s.extra_rdoc_files = ["README", "ChangeLog"]
-  s.files = ["README", "ChangeLog", "Rakefile", "lib/mysql", "lib/mysql/constants.rb", "lib/mysql/compat.rb", "lib/mysql/protocol.rb", "lib/mysql/cache.rb", "lib/mysql/charset.rb", "lib/mysql/error.rb", "lib/mysql.rb~", "lib/mysql.rb"]
+  s.files = ["README", "ChangeLog", "Rakefile", "lib/mysql", "lib/mysql/constants.rb", "lib/mysql/compat.rb", "lib/mysql/protocol.rb", "lib/mysql/cache.rb", "lib/mysql/charset.rb", "lib/mysql/error.rb", "lib/mysql.rb"]
   s.has_rdoc = true
   s.homepage = %q{http://github.com/tmtm/ruby-mysql}
   s.rdoc_options = ["--title", "ruby-mysql documentation", "--charset", "utf-8", "--opname", "index.html", "--line-numbers", "--main", "README", "--inline-source", "--exclude", "^(examples|extras)/"]

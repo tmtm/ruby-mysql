@@ -5,11 +5,20 @@
 
 class Mysql
   class << self
-    alias connect new
-    alias real_connect new
+
+    def connect(*args)
+      my = self.allocate
+      my.instance_eval{initialize}
+      my.connect(*args)
+      my
+    end
+    alias new connect
+    alias real_connect connect
 
     def init
-      self.allocate
+      my = self.allocate
+      my.instance_eval{initialize}
+      my
     end
 
     def client_version
@@ -35,24 +44,30 @@ class Mysql
     alias quote escape_string
   end
 
-  alias orig_initialize initialize
-  alias stmt_init stmt
-  alias query simple_query
+  attr_accessor :query_with_result, :reconnect
+
+  alias stmt_init statement
+  alias real_connect connect
+  alias initialize_orig initialize
 
   def initialize(*args)
-    if args.first.is_a? Hash || defined?(URI) && args.first.is_a?(URI) || args.first =~ /\Amysql:\/\//
-      orig_initialize *args
-    else
-      host, user, password, db, port, socket, flag = args
-      orig_initialize :host=>host, :user=>user, :password=>password, :db=>db, :port=>port, :socket=>socket, :flag=>flag
-    end
+    initialize_orig *args
+    @query_with_result = true
+    @reconnect = false
   end
 
-  def connect(host, user, password, db, port, socket, flag)
-    initialize :host=>host, :user=>user, :password=>password, :db=>db, :port=>port, :socket=>socket, :flag=>flag
-    self
+  def query(str)
+    res = simple_query str
+    if res
+      res.each do |rec|
+        rec.each_index do |i|
+          @fields[i].max_length = [rec[i] ? rec[i].length : 0, @fields[i].max_length||0].max
+        end
+      end
+      res.data_seek 0
+    end
+    res
   end
-  alias real_connect connect
 
   def client_version
     self.class.client_version
@@ -102,10 +117,6 @@ class Mysql
     self
   end
 
-  def sqlstate
-    @stream ? @stream.sqlstate : "00000"
-  end
-
   def store_result
     raise ClientError, "no result set" unless @fields
     Result.new @fields, @stream
@@ -137,6 +148,11 @@ class Mysql
 
     def free
       # do nothing
+    end
+
+    alias fetch_row_orig fetch_row
+    def fetch_row
+      @fetched_record = fetch_row_orig
     end
 
     def fetch_field
@@ -173,6 +189,25 @@ class Mysql
     end
   end
 
+  class Field
+    attr_accessor :max_length
+    def hash
+      {
+        "name"       => @name,
+        "table"      => @table,
+        "def"        => @default,
+        "type"       => @type,
+        "length"     => @length,
+        "max_length" => @max_length,
+        "flags"      => @flags,
+        "decimals"   => @decimals
+      }
+    end
+    def inspect
+      "#<Mysql::Field:#{@name}>"
+    end
+  end
+
   class Statement
     def num_rows
       @records.length
@@ -202,7 +237,11 @@ class Mysql
 
     def result_metadata
       return nil if @fields.empty?
-      Result.new @fields, nil, false
+      res = Result.allocate
+      res.instance_variable_set :@mysql, @mysql
+      res.instance_variable_set :@fields, @fields
+      res.instance_variable_set :@records, []
+      res
     end
   end
   Stmt = Statement
