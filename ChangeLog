@@ -1,3 +1,7 @@
-== 3.0.0 / 2009-03-22
+2009-04-12  TOMITA Masahiro  <tommy@tmtm.org>
 
-* initial release for v3.0.
+	* for Ruby 1.8.6
+
+2009-03-22  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* Version 3.0.0-alpha
