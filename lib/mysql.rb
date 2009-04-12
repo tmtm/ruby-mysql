@@ -2,6 +2,7 @@
 # mailto:tommy@tmtm.org
 
 $LOAD_PATH.unshift File.dirname(__FILE__)
+require "enumerator"
 require "mysql/constants"
 require "mysql/error"
 require "mysql/charset"
@@ -65,7 +66,7 @@ class Mysql
     my.instance_eval{initialize(*args)}
     return my unless block
     begin
-      return block.call my
+      return block.call(my)
     ensure
       my.close
     end
@@ -75,11 +76,11 @@ class Mysql
   # The value that block returns if block is specified.
   # Otherwise this returns Mysql object.
   def self.connect(*args, &block)
-    my = self.new *args
+    my = self.new(*args)
     my.connect
     return my unless block
     begin
-      return block.call my
+      return block.call(my)
     ensure
       my.close
     end
@@ -119,16 +120,17 @@ class Mysql
     @read_timeout = nil
     @write_timeout = nil
     @init_command = nil
+    @prepared_statement_cache_size = nil
     @affected_rows = nil
     @server_version = nil
     @sqlstate = "00000"
-    @param, opt = conninfo *args
+    @param, opt = conninfo(*args)
     @connected = false
     set_option opt
   end
 
   def connect(*args)
-    param, opt = conninfo *args
+    param, opt = conninfo(*args)
     set_option opt
     param = @param.merge param
     @protocol = Protocol.new param[:host], param[:port], param[:socket], @connect_timeout, @read_timeout, @write_timeout
@@ -221,7 +223,7 @@ class Mysql
     @protocol.synchronize do
       begin
         @protocol.reset
-        @protocol.send_packet Protocol::QueryPacket.new @charset.convert(str)
+        @protocol.send_packet Protocol::QueryPacket.new(@charset.convert(str))
         res_packet = @protocol.read_result_packet
         if res_packet.field_count == 0
           @affected_rows, @insert_id, @server_status, @warning_conut =
@@ -252,7 +254,7 @@ class Mysql
     st.prepare str
     if block
       begin
-        return block.call st
+        return block.call(st)
       ensure
         st.close
       end
@@ -292,7 +294,7 @@ class Mysql
     st = Statement.new self
     if block
       begin
-        return block.call st
+        return block.call(st)
       ensure
         st.close
       end
@@ -541,7 +543,7 @@ class Mysql
         Thread.new do
           protocol.synchronize do
             protocol.reset
-            protocol.send_packet Protocol::StmtClosePacket.new statement_id
+            protocol.send_packet Protocol::StmtClosePacket.new(statement_id)
           end
         end
       end
@@ -556,6 +558,7 @@ class Mysql
       @sqlstate = "00000"
       @cursor_type = CURSOR_TYPE_NO_CURSOR
       @param_count = nil
+      @records = nil
     end
 
     # parse prepared-statement and return Mysql::Statement object
@@ -569,7 +572,7 @@ class Mysql
         begin
           @sqlstate = "00000"
           @protocol.reset
-          @protocol.send_packet Protocol::PreparePacket.new @mysql.charset.convert(str)
+          @protocol.send_packet Protocol::PreparePacket.new(@mysql.charset.convert(str))
           res_packet = @protocol.read_prepare_result_packet
           if res_packet.param_count > 0
             res_packet.param_count.times{@protocol.read}   # skip parameter packet
@@ -602,7 +605,7 @@ class Mysql
           @sqlstate = "00000"
           @protocol.reset
           cursor_type = @fields.empty? ? CURSOR_TYPE_NO_CURSOR : @cursor_type
-          @protocol.send_packet Protocol::ExecutePacket.new @statement_id, cursor_type, values
+          @protocol.send_packet Protocol::ExecutePacket.new(@statement_id, cursor_type, values)
           res_packet = @protocol.read_result_packet
           raise ProtocolError, "invalid field_count" unless res_packet.field_count == @fields.length
           @fieldname_with_table = nil
@@ -640,14 +643,14 @@ class Mysql
       return nil if @eof
       @protocol.synchronize do
         @protocol.reset
-        @protocol.send_packet Protocol::FetchPacket.new @statement_id, 1
+        @protocol.send_packet Protocol::FetchPacket.new(@statement_id, 1)
         data = @protocol.read
         if Protocol.eof_packet? data
           @eof = true
           return nil
         end
         @protocol.read_eof_packet
-        return parse_data data
+        return parse_data(data)
       end
     end
     alias fetch fetch_row
@@ -687,7 +690,7 @@ class Mysql
       @protocol.synchronize do
         @protocol.reset
         if @statement_id
-          @protocol.send_packet Protocol::StmtClosePacket.new @statement_id
+          @protocol.send_packet Protocol::StmtClosePacket.new(@statement_id)
           @statement_id = nil
         end
       end

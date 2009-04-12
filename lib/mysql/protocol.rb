@@ -52,7 +52,7 @@ class Mysql
         lcb[0, 9] = ""
         return (v2 << 32) | v1
       else
-        return ord! lcb
+        return ord!(lcb)
       end
     end
 
@@ -432,9 +432,9 @@ class Mysql
           affected_rows = Protocol.lcb2int! data
           insert_id = Protocol.lcb2int!(data)
           server_status, warning_count, message = data.unpack("vva*")
-          return self.new field_count, affected_rows, insert_id, server_status, warning_count, message
+          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, message)
         else
-          return self.new field_count
+          return self.new(field_count)
         end
       end
 
@@ -457,7 +457,7 @@ class Mysql
         f0, charsetnr, length, type, flags, decimals, f1, data = data.unpack("CvVCvCva*")
         raise ProtocolError, "invalid packet: f1=#{f1}" unless f1 == 0
         default = Protocol.lcs2str! data
-        return self.new db, table, org_table, name, org_name, charsetnr, length, type, flags, decimals, default
+        return self.new(db, table, org_table, name, org_name, charsetnr, length, type, flags, decimals, default)
       end
 
       attr_accessor :db, :table, :org_table, :name, :org_name, :charsetnr, :length, :type, :flags, :decimals, :default

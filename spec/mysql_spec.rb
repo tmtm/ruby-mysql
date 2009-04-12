@@ -12,6 +12,8 @@ MYSQL_DATABASE = "test"
 MYSQL_PORT     = 3306
 MYSQL_SOCKET   = "/var/run/mysqld/mysqld.sock"
 
+URL = "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
+
 describe 'Mysql#conninfo' do
   before do
     @m = Mysql.allocate
@@ -151,14 +153,14 @@ describe 'Mysql.connect' do
   end
   describe 'with block' do
     it 'return block value' do
-      Mysql.connect(){123}.should == 123
+      Mysql.connect(URL){123}.should == 123
     end
   end
 end
 
 describe 'Mysql' do
   before do
-    @mysql = Mysql.connect "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
+    @mysql = Mysql.connect URL
   end
 
   describe '#escape_string' do
@@ -214,7 +216,7 @@ describe 'Mysql' do
 
   describe '#statement without block' do
     it 'returns Mysql::Statement object' do
-      @mysql.statement.should be_kind_of Mysql::Statement
+      @mysql.statement.should be_kind_of(Mysql::Statement)
     end
   end
 
@@ -226,7 +228,7 @@ describe 'Mysql' do
 
   describe '#prepare without block' do
     it 'returns Mysql::Statement object' do
-      @mysql.prepare("select 1").should be_kind_of Mysql::Statement
+      @mysql.prepare("select 1").should be_kind_of(Mysql::Statement)
     end
   end
 
@@ -555,7 +557,7 @@ end
 
 describe 'Mysql::Statement' do
   before do
-    my = Mysql.connect "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
+    my = Mysql.connect URL
     my.query "create temporary table t (a int not null, b char(10))"
     my.query "insert into t values (123,'abc'),(456,'def')"
     @st = my.statement
@@ -614,7 +616,7 @@ describe 'Mysql::Statement' do
     @st.prepare "select a,b from t"
     @st.execute
     e = @st.each
-    e.should be_kind_of Enumerable::Enumerator
+    e.should be_kind_of(Enumerable::Enumerator)
     e.entries.should == [[123,"abc"], [456,"def"]]
   end
   it '#each with block returns self' do
@@ -628,7 +630,7 @@ describe 'Mysql::Statement' do
     @st.prepare "select a,b from t"
     @st.execute
     e = @st.each_hash
-    e.should be_kind_of Enumerable::Enumerator
+    e.should be_kind_of(Enumerable::Enumerator)
     e.entries.should == [{"a"=>123,"b"=>"abc"}, {"a"=>456,"b"=>"def"}]
   end
   it '#each_hash with block returns self' do
@@ -650,7 +652,7 @@ end
 
 describe 'Mysql::Result' do
   before do
-    my = Mysql.connect "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
+    my = Mysql.connect URL
     my.query "create temporary table t (a int, b char(10))"
     my.query "insert into t values (123,'abc'),(456,'def')"
     @res = my.simple_query "select a,b from t"
@@ -666,7 +668,7 @@ describe 'Mysql::Result' do
   end
   it '#each without block returns Enumerable::Enumerator' do
     e = @res.each
-    e.should be_kind_of Enumerable::Enumerator
+    e.should be_kind_of(Enumerable::Enumerator)
     e.entries.should == [["123","abc"], ["456","def"]]
   end
   it '#each with block returns self' do
@@ -676,7 +678,7 @@ describe 'Mysql::Result' do
   end
   it '#each_hash without block returns Enumerable::Enumerator' do
     e = @res.each_hash
-    e.should be_kind_of Enumerable::Enumerator
+    e.should be_kind_of(Enumerable::Enumerator)
     e.entries.should == [{"a"=>"123","b"=>"abc"}, {"a"=>"456","b"=>"def"}]
   end
   it '#each_hash with block returns self' do
@@ -688,7 +690,7 @@ end
 
 describe 'Mysql::Field' do
   before do
-    my = Mysql.connect "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
+    my = Mysql.connect URL
     my.query "create temporary table t (a int not null primary key, b int null, c char(10))"
     @a, @b, @c = my.prepare("select a,b,c from t").fields
   end
@@ -752,7 +754,7 @@ describe 'Mysql' do
   end
   describe 'with prepared_statmement_cache_size=0' do
     it 'does not use cache' do
-      Mysql.connect :prepared_statement_cache_size=>0 do |m|
+      Mysql.connect URL, :prepared_statement_cache_size=>0 do |m|
         cnt = get_stmt_cnt m
         m.query 'select ?', 123
         m.query 'select ?', 123
@@ -764,7 +766,7 @@ describe 'Mysql' do
   end
   describe 'with prepared_statmement_cache_size>0' do
     it 'use cache' do
-      Mysql.connect :prepared_statement_cache_size=>1 do |m|
+      Mysql.connect URL, :prepared_statement_cache_size=>1 do |m|
         cnt = get_stmt_cnt m
         m.query 'select ?', 123
         m.query 'select ?', 123
@@ -785,7 +787,7 @@ end
 
 describe 'Mysql::ServerError' do
   before do
-    my = Mysql.connect "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
+    my = Mysql.connect URL
     begin
       my.query("hoge")
     rescue Mysql::Error => @err

@@ -51,7 +51,7 @@ class Mysql
   alias initialize_orig initialize
 
   def initialize(*args)
-    initialize_orig *args
+    initialize_orig(*args)
     @query_with_result = true
     @reconnect = false
   end
