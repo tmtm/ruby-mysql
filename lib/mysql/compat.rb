@@ -60,6 +60,7 @@ class Mysql
     res = simple_query str
     if res
       res.each do |rec|
+        rec.map!{|v| v && v.to_s}
         rec.each_index do |i|
           @fields[i].max_length = [rec[i] ? rec[i].length : 0, @fields[i].max_length||0].max
         end
@@ -128,6 +129,12 @@ class Mysql
   end
 
   class Result
+    alias initialize_orig initialize
+    def initialize(*args)
+      initialize_orig *args
+      @field_index = 0
+    end
+
     def num_rows
       @records.length
     end
@@ -209,22 +216,34 @@ class Mysql
   end
 
   class Statement
+    alias execute_orig execute
+    def execute(*args)
+      @res = execute_orig *args
+    end
+
+    def fetch
+      @res.fetch
+    end
+    alias fetch_row fetch
+
+    def each(*args, &block)
+      @res.each(*args, &block)
+    end
+
     def num_rows
-      @records.length
+      @res.num_rows
     end
 
     def data_seek(n)
-      @index = n
+      @res.data_seek(n)
     end
 
     def row_tell
-      @index
+      @res.row_tell
     end
 
     def row_seek(n)
-      ret = @index
-      @index = n
-      ret
+      @res.row_seek(n)
     end
 
     def field_count

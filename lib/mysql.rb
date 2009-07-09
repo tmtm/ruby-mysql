@@ -228,9 +228,9 @@ class Mysql
             res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
           return nil
         else
-          fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+          @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
           @protocol.read_eof_packet
-          return SimpleQueryResult.new self, fields
+          return SimpleQueryResult.new self, @fields
         end
       rescue ServerError => e
         @sqlstate = e.sqlstate
@@ -600,10 +600,8 @@ class Mysql
       @protocol = mysql.protocol
       @statement_id = nil
       @affected_rows = @insert_id = @server_status = @warning_count = 0
-      @eof = false
       @sqlstate = "00000"
       @param_count = nil
-      @records = nil
     end
 
     # parse prepared-statement and return Mysql::Statement object
