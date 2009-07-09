@@ -2,8 +2,7 @@ require "rubygems"
 require "spec"
 require "uri"
 
-$LOAD_PATH.unshift "#{File.dirname __FILE__}"
-require "mysql"
+require "#{File.dirname __FILE__}/../lib/mysql"
 
 MYSQL_SERVER   = "localhost"
 MYSQL_USER     = "test"
@@ -169,48 +168,95 @@ describe 'Mysql' do
     end
   end
 
-  describe '#simple_query with no result' do
+  describe '#query with no result' do
     it 'return nil' do
-      @mysql.simple_query("create temporary table t (i int, c char(10))").should == nil
+      @mysql.query("create temporary table t (i int, c char(10))").should == nil
     end
   end
 
-  describe '#simple_query with single record result' do
+  describe '#query with single record result' do
     before do
-      @res = @mysql.simple_query "select 1,'abc',1.23"
+      @res = @mysql.query "select 1,'abc',1.23"
     end
-    it 'return value as string' do
-      @res.fetch_row.should == ["1", "abc", "1.23"]
+    it 'return values' do
+      @res.fetch_row.should == [1, "abc", "1.23"]
       @res.fetch_row.should == nil
     end
-    it 'return value is tainted' do
-      @res.fetch_row.first.should be_tainted
+    it 'returned value is tainted' do
+      @res.fetch_row[1].should be_tainted
     end
   end
 
-  describe '#simple_query with null column result' do
+  describe '#query with null column result' do
     before do
-      @res = @mysql.simple_query "select 1,'abc',null"
+      @res = @mysql.query "select 1,'abc',null"
     end
     it 'return result NULL as nil' do
-      @res.fetch_row.should == ["1", "abc", nil]
+      @res.fetch_row.should == [1, "abc", nil]
     end
   end
 
-  describe '#simple_query with multiple record result' do
+  describe '#query with multiple record result' do
     before do
-      @res = @mysql.simple_query "select 1,'abc',null union select 2,'def',1.23"
+      @res = @mysql.query "select 1,'abc',null union select 2,'def',1.23"
     end
     it 'return multiple record result' do
-      @res.fetch_row.should == ["1", "abc", nil]
-      @res.fetch_row.should == ["2", "def", "1.23"]
+      @res.fetch_row.should == [1, "abc", nil]
+      @res.fetch_row.should == [2, "def", "1.23"]
       @res.fetch_row.should == nil
     end
   end
 
-  describe '#simple_query with block' do
+  describe '#query with block' do
     it 'return self' do
-      @mysql.simple_query("select 1"){}.should == @mysql
+      @mysql.query("select 1"){}.should == @mysql
+    end
+  end
+
+  describe 'normal query and prepared statement returns same values for several columns' do
+    it 'return appropriate value' do
+      @mysql.query <<EOS
+create temporary table t (
+  bit bit(8),
+  ti tinyint,
+  si smallint,
+  mi mediumint,
+  i int,
+  bi bigint,
+  f float,
+  d double,
+  de decimal,
+  date date,
+  dt datetime,
+  ts timestamp,
+  time time,
+  y year(4),
+  c char(10),
+  v varchar(10),
+  bin binary(10),
+  vb varbinary(10),
+  tb tinyblob,
+  tt tinytext,
+  b blob,
+  t text,
+  mb mediumblob,
+  mt mediumtext,
+  lb longblob,
+  lt longtext,
+  en enum('1','2','3'),
+  se set('1','2','3')
+)
+EOS
+      @mysql.query "insert into t values (5,1,1,1,1,1,1.0,1.0,1,'2009-07-02','2009-07-02 07:38:45','2009-07-02 07:38:45','07:38:45',2009,'a','b','c','d','e','f','g','h','i','j','k','l','2','1,2,3')"
+      expected = [
+        "\005", 1, 1, 1, 1, 1, 1.0, 1.0, "1", Mysql::Time.new(2009,7,2,0,0,0),
+        Mysql::Time.new(2009,7,2,7,38,45), Mysql::Time.new(2009,7,2,7,38,45),
+        Mysql::Time.new(0,0,0,7,38,45), 2009,
+        'a','b',"c\0\0\0\0\0\0\0\0\0",'d','e','f','g','h','i','j','k','l',
+        '2','1,2,3'
+      ]
+      @mysql.query("select * from t").fetch.should == expected
+      @mysql.prepare("select * from t").execute.fetch.should == expected
     end
   end
 
@@ -254,7 +300,7 @@ describe 'Mysql' do
     end
   end
 
-  describe 'prepared statement:' do
+  describe 'simple query and prepared statement:' do
     describe 'signed integer:' do
       before do
         @mysql.query "create temporary table t (i1 tinyint, i2 smallint, i3 mediumint, i4 int, i8 bigint)"
@@ -265,28 +311,40 @@ describe 'Mysql' do
         @mysql.query "drop temporary table t"
       end
       it 'nil: store NULL' do
-        @st.execute nil, nil, nil, nil, nil
-        @st2.execute.fetch.should == [nil, nil, nil, nil, nil]
+        rec = [nil, nil, nil, nil, nil]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it '0: store 0' do
-        @st.execute 0, 0, 0, 0, 0
-        @st2.execute.fetch.should == [0, 0, 0, 0, 0]
+        rec = [0, 0, 0, 0, 0]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'positive number: store correct value' do
-        @st.execute 123,123,123,123,123
-        @st2.execute.fetch.should == [123, 123, 123, 123, 123]
+        rec = [123, 123, 123, 123, 123]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'negative number: store correct value' do
-        @st.execute(-123,-123,-123,-123,-123)
-        @st2.execute.fetch.should == [-123, -123, -123, -123, -123]
+        rec = [-123, -123, -123, -123, -123]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'positive maxmum number: store correct value' do
-        @st.execute 127,32767,8388607,2147483647,9223372036854775807
-        @st2.execute.fetch.should == [127, 32767, 8388607, 2147483647, 9223372036854775807]
+        rec = [127, 32767, 8388607, 2147483647, 9223372036854775807]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'negative number: store correct value' do
-        @st.execute(-128,-32768,-8388608,-2147483648,-9223372036854775808)
-        @st2.execute.fetch.should == [-128, -32768, -8388608, -2147483648, -9223372036854775808]
+        rec = [-128, -32768, -8388608, -2147483648, -9223372036854775808]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'large value: ProtocolError' do
         proc{@st.execute(18446744073709551616,0,0,0,0)}.should raise_error(Mysql::ProtocolError, 'value too large: 18446744073709551616')
@@ -302,20 +360,28 @@ describe 'Mysql' do
         @mysql.query "drop temporary table t"
       end
       it 'nil: store NULL' do
-        @st.execute nil, nil, nil, nil, nil
-        @st2.execute.fetch.should == [nil, nil, nil, nil, nil]
+        rec = [nil, nil, nil, nil, nil]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it '0: store 0' do
-        @st.execute 0, 0, 0, 0, 0
-        @st2.execute.fetch.should == [0, 0, 0, 0, 0]
+        rec = [0, 0, 0, 0, 0]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'positive number: store correct value' do
-        @st.execute 123,123,123,123,123
-        @st2.execute.fetch.should == [123, 123, 123, 123, 123]
+        rec = [123, 123, 123, 123, 123]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'maximum number: store correct value' do
-        @st.execute 255,65535,16777215,4294967295,18446744073709551615
-        @st2.execute.fetch.should == [255, 65535, 16777215, 4294967295, 18446744073709551615]
+        rec = [255, 65535, 16777215, 4294967295, 18446744073709551615]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'large value: ProtocolError' do
         proc{@st.execute(-9223372036854775809,0,0,0,0)}.should raise_error(Mysql::ProtocolError, 'value too large: -9223372036854775809')
@@ -331,40 +397,48 @@ describe 'Mysql' do
         @mysql.query "drop temporary table t"
       end
       it 'nil: store NULL' do
-        @st.execute nil, nil
-        @st2.execute.fetch.should == [nil, nil]
+        rec = [nil, nil]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it '0: store 0' do
-        @st.execute 0, 0
-        @st2.execute.fetch.should == [0, 0]
+        rec = [0, 0]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'positve number: store correct value' do
-        @st.execute 1.25, 1.25
-        @st2.execute.fetch.should == [1.25, 1.25]
+        rec = [1.25, 1.25]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'negative number: store correct value' do
-        @st.execute(-1.25, -1.25)
-        @st2.execute.fetch.should == [-1.25, -1.25]
+        rec = [-1.25, -1.25]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'minimum number: store correct value' do
         @st.execute(1.175494351e-38, 2.2250738585072014e-308)
         @st.execute(-1.175494351e-38, -2.2250738585072014e-308)
-        @st2.execute
-        f, d = @st2.fetch
+        res = @st2.execute
+        f, d = res.fetch
         (f-1.17549435082229e-38).abs.should <= 1.0e-52
         d.should == 2.2250738585072014E-308
-        f, d = @st2.fetch
+        f, d = res.fetch
         (f+1.17549435082229e-38).abs.should <= 1.0e-52
         d.should == -2.2250738585072014E-308
       end
       it 'maximum number: store correct value' do
         @st.execute(3.402823466E+38, 1.7976931348623157E+308)
         @st.execute(-3.402823466E+38, -1.7976931348623157E+308)
-        @st2.execute
-        f, d = @st2.fetch
+        res = @st2.execute
+        f, d = res.fetch
         (f-3.40282346638529e+38).abs.should <= 1.0e+24
         d.should == 1.7976931348623157E+308
-        f, d = @st2.fetch
+        f, d = res.fetch
         (f+3.40282346638529e+38).abs.should <= 1.0e+24
         d.should == -1.7976931348623157E+308
       end
@@ -379,22 +453,29 @@ describe 'Mysql' do
         @mysql.query "drop temporary table t"
       end
       it 'nil: store NULL' do
-        @st.execute nil, nil, nil, nil
-        @st2.execute.fetch.should == [nil, nil, nil, nil]
+        rec = [nil, nil, nil, nil]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'empty string: store empty string' do
-        @st.execute "", "", "", ""
-        @st2.execute.fetch.should == ["", "", "", ""]
+        rec = ["", "", "", ""]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'string: store string' do
-        @st.execute "aaa", "a"*500, "a"*100000, ""
-        @st2.execute.fetch.should == ["aaa", "a"*500, "a"*100000, ""]
+        rec = ["aaa", "a"*500, "a"*100000, ""]
+        @st.execute *rec
+        @st2.execute.fetch.should == rec
+        @mysql.query("select * from t").fetch.should == rec
       end
       it 'long string: store string' do
         n, v = @mysql.query("show variables like 'max_allowed_packet'").fetch
         if v.to_i > 30000000
           @st.execute "aaa", "a"*500, "a"*100000, "a"*16777216
           @st2.execute.fetch.map(&:length).should == [3, 500, 100000, 16777216]
+          @mysql.query("select * from t").fetch.map(&:length).should == [3, 500, 100000, 16777216]
         end
       end
     end
@@ -410,14 +491,17 @@ describe 'Mysql' do
       it 'nil: store NULL' do
         @st.execute nil
         @st2.execute.fetch.should == [nil]
+        @mysql.query("select * from t").fetch.should == [nil]
       end
       it 'number: store correct value' do
         @st.execute 123.456
         @st2.execute.fetch.should == ["123.45600"]
+        @mysql.query("select * from t").fetch.should == ["123.45600"]
       end
       it 'string: store correct value' do
         @st.execute "123.456"
         @st2.execute.fetch.should == ["123.45600"]
+        @mysql.query("select * from t").fetch.should == ["123.45600"]
       end
     end
     describe 'datetime:' do
@@ -435,60 +519,72 @@ describe 'Mysql' do
       end
       it 'value as string: store correct value' do
         @st.execute '2008-10-23','2008-10-23 21:04:07','2008-10-23 21:04:07','21:04:07','99','2008'
-        ret = @st2.execute.fetch
-        ret[0].should == Mysql::Time.new(2008,10,23)
-        ret[1].should == Mysql::Time.new(2008,10,23,21,4,7)
-        ret[2].should == Mysql::Time.new(2008,10,23,21,4,7)
-        ret[3].should == Mysql::Time.new(0,0,0,21,4,7)
-        ret[4].should == 99
-        ret[5].should == 2008
+        expect = [
+          Mysql::Time.new(2008,10,23),
+          Mysql::Time.new(2008,10,23,21,4,7),
+          Mysql::Time.new(2008,10,23,21,4,7),
+          Mysql::Time.new(0,0,0,21,4,7),
+          99,
+          2008,
+        ]
+        @st2.execute.fetch.should == expect
+        @mysql.query("select * from t").fetch.should == expect
       end
       it 'value as numeric: store correct value' do
         @st.execute 20081023,20081023210407,20081023210407,210407,8,2008
-        ret = @st2.execute.fetch
-        ret[0].should == Mysql::Time.new(2008,10,23)
-        ret[1].should == Mysql::Time.new(2008,10,23,21,4,7)
-        ret[2].should == Mysql::Time.new(2008,10,23,21,4,7)
-        ret[3].should == Mysql::Time.new(0,0,0,21,4,7)
-        ret[4].should == 8
-        ret[5].should == 2008
+        expect = [
+          Mysql::Time.new(2008,10,23),
+          Mysql::Time.new(2008,10,23,21,4,7),
+          Mysql::Time.new(2008,10,23,21,4,7),
+          Mysql::Time.new(0,0,0,21,4,7),
+          8,
+          2008,
+        ]
+        @st2.execute.fetch.should == expect
+        @mysql.query("select * from t").fetch.should == expect
       end
       it 'value as Mysql::Time: store correct value' do
         d = Mysql::Time.new(2008,10,23,21,4,7)
         @st.execute d,d,d,d,d,d
-        ret = @st2.execute.fetch
-        ret[0].should == Mysql::Time.new(2008,10,23)
-        ret[1].should == Mysql::Time.new(2008,10,23,21,4,7)
-        ret[2].should == Mysql::Time.new(2008,10,23,21,4,7)
-        ret[3].should == Mysql::Time.new(0,0,0,21,4,7)
-        ret[4].should == 8
-        ret[5].should == 2008
+        expect = [
+          Mysql::Time.new(2008,10,23),
+          Mysql::Time.new(2008,10,23,21,4,7),
+          Mysql::Time.new(2008,10,23,21,4,7),
+          Mysql::Time.new(0,0,0,21,4,7),
+          8,
+          2008,
+        ]
+        @st2.execute.fetch.should == expect
+        @mysql.query("select * from t").fetch.should == expect
       end
       describe 'retrieve TIME over 24 hour:' do
         it 'return correct value' do
           @mysql.query "insert into t (t) values ('101:11:22')"
           st = @mysql.prepare "select t from t"
-          st.execute
-          st.fetch.should == [Mysql::Time.new(0,0,0,101,11,22)]
-          st.fetch.should == nil
+          res = st.execute
+          res.fetch.should == [Mysql::Time.new(0,0,0,101,11,22)]
+          res.fetch.should == nil
+          @mysql.query("select t from t").fetch.should == [Mysql::Time.new(0,0,0,101,11,22)]
         end
       end
       describe 'retrieve negative TIME:' do
         it 'return negative value' do
           @mysql.query "insert into t (t) values ('-100:11:22')"
           st = @mysql.prepare "select t from t"
-          st.execute
-          st.fetch.should == [Mysql::Time.new(0,0,0,100,11,22,true)]
-          st.fetch.should == nil
+          res = st.execute
+          res.fetch.should == [Mysql::Time.new(0,0,0,100,11,22,true)]
+          res.fetch.should == nil
+          @mysql.query("select t from t").fetch.should == [Mysql::Time.new(0,0,0,100,11,22,true)]
         end
       end
       describe 'retrieve YEAR 99:' do
         it 'return 99' do
           @mysql.query "insert into t (y2) values (99)"
           st = @mysql.prepare "select y2 from t"
-          st.execute
-          st.fetch.should == [99]
-          st.fetch.should == nil
+          res = st.execute
+          res.fetch.should == [99]
+          res.fetch.should == nil
+          @mysql.query("select y2 from t").fetch.should == [99]
         end
       end
     end
@@ -504,20 +600,27 @@ describe 'Mysql' do
       end
       it '0: store 0' do
         @st.execute 0, 0, 0
-        @st2.execute.fetch.should == ["\0", "\0\0\0\0", "\0\0\0\0\0\0\0\0"]
+        expect = ["\0", "\0\0\0\0", "\0\0\0\0\0\0\0\0"]
+        @st2.execute.fetch.should == expect
+        @mysql.query("select * from t").fetch.should == expect
       end
       it 'positive number: store correct value' do
         @st.execute 1, 128, 128
-        @st2.execute.fetch.should == ["\1", "\0\0\0\200", "\0\0\0\0\0\0\0\200"]
+        expect = ["\1", "\0\0\0\200", "\0\0\0\0\0\0\0\200"]
+        @st2.execute.fetch.should == expect
+        @mysql.query("select * from t").fetch.should == expect
       end
       it 'maximum number: store correct value' do
         @st.execute 1, 2**32-1, 2**64-1
-        @st2.execute.fetch.should == ["\1", "\377\377\377\377", "\377\377\377\377\377\377\377\377"]
+        expect = ["\1", "\377\377\377\377", "\377\377\377\377\377\377\377\377"]
+        @st2.execute.fetch.should == expect
+        @mysql.query("select * from t").fetch.should == expect
       end
     end
     describe 'mix some type:' do
       it 'return valid value' do
         @mysql.prepare("select ?,?,?").execute(nil,123,"abc").fetch.should == [nil,123,"abc"]
+        @mysql.query("select null,123,'abc'").fetch.should == [nil,123,"abc"]
       end
     end
     describe 'unknown type:' do
@@ -574,9 +677,9 @@ describe 'Mysql::Statement' do
     end
   end
   describe '#execute' do
-    it 'returns self' do
+    it 'returns Result object' do
       @st.prepare "select 1"
-      @st.execute.should == @st
+      @st.execute.should be_kind_of Mysql::Result
     end
   end
   describe '#execute without prepare' do
@@ -597,57 +700,6 @@ describe 'Mysql::Statement' do
       @st.sqlstate.should == "23000"
     end
   end
-  it '#fetch_row returns Array of data' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    @st.fetch_row.should == [123, "abc"]
-  end
-  it '#fetch_hash returns Hash that key is column name' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    @st.fetch_hash.should == {"a"=>123, "b"=>"abc"}
-  end
-  it '#fetch_hash(true) returns Hash that key is table name and column name' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    @st.fetch_hash(true).should == {"t.a"=>123, "t.b"=>"abc"}
-  end
-  it '#each without block returns Enumerable::Enumerator' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    e = @st.each
-    e.should be_kind_of(Enumerable::Enumerator)
-    e.entries.should == [[123,"abc"], [456,"def"]]
-  end
-  it '#each with block returns self' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    rec = []
-    @st.each{|r| rec.push r}.should == @st
-    rec.should == [[123,"abc"], [456,"def"]]
-  end
-  it '#each_hash without block returns Enumerable::Enumerator' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    e = @st.each_hash
-    e.should be_kind_of(Enumerable::Enumerator)
-    e.entries.should == [{"a"=>123,"b"=>"abc"}, {"a"=>456,"b"=>"def"}]
-  end
-  it '#each_hash with block returns self' do
-    @st.prepare "select a,b from t"
-    @st.execute
-    rec = []
-    @st.each_hash{|r| rec.push r}.should == @st
-    rec.should == [{"a"=>123,"b"=>"abc"}, {"a"=>456,"b"=>"def"}]
-  end
-  it '#each with CURSOR_TYPE_READ_ONLY behave same as CURSOR_TYPE_NO_CURSOR' do
-    @st.cursor_type = Mysql::Statement::CURSOR_TYPE_READ_ONLY
-    @st.prepare "select a,b from t"
-    @st.execute
-    rec = []
-    @st.each{|r| rec.push r}.should == @st
-    rec.should == [[123,"abc"], [456,"def"]]
-  end
 end
 
 describe 'Mysql::Result' do
@@ -655,36 +707,36 @@ describe 'Mysql::Result' do
     my = Mysql.connect URL
     my.query "create temporary table t (a int, b char(10))"
     my.query "insert into t values (123,'abc'),(456,'def')"
-    @res = my.simple_query "select a,b from t"
+    @res = my.query "select a,b from t"
   end
   it '#fetch_row returns Array of String' do
-    @res.fetch_row.should == ["123", "abc"]
+    @res.fetch_row.should == [123, "abc"]
   end
   it '#fetch_hash returns Hash that key is column name' do
-    @res.fetch_hash.should == {"a"=>"123", "b"=>"abc"}
+    @res.fetch_hash.should == {"a"=>123, "b"=>"abc"}
   end
   it '#fetch_hash(true) returns Hash that key is table name and column name' do
-    @res.fetch_hash(true).should == {"t.a"=>"123", "t.b"=>"abc"}
+    @res.fetch_hash(true).should == {"t.a"=>123, "t.b"=>"abc"}
   end
   it '#each without block returns Enumerable::Enumerator' do
     e = @res.each
     e.should be_kind_of(Enumerable::Enumerator)
-    e.entries.should == [["123","abc"], ["456","def"]]
+    e.entries.should == [[123,"abc"], [456,"def"]]
   end
   it '#each with block returns self' do
     rec = []
     @res.each{|r| rec.push r}.should == @res
-    rec.should == [["123","abc"], ["456","def"]]
+    rec.should == [[123,"abc"], [456,"def"]]
   end
   it '#each_hash without block returns Enumerable::Enumerator' do
     e = @res.each_hash
     e.should be_kind_of(Enumerable::Enumerator)
-    e.entries.should == [{"a"=>"123","b"=>"abc"}, {"a"=>"456","b"=>"def"}]
+    e.entries.should == [{"a"=>123,"b"=>"abc"}, {"a"=>456,"b"=>"def"}]
   end
   it '#each_hash with block returns self' do
     rec = []
     @res.each_hash{|r| rec.push r}.should == @res
-    rec.should == [{"a"=>"123","b"=>"abc"}, {"a"=>"456","b"=>"def"}]
+    rec.should == [{"a"=>123,"b"=>"abc"}, {"a"=>456,"b"=>"def"}]
   end
 end
 
@@ -738,50 +790,6 @@ describe 'Mysql::Time' do
   it '#to_s for 0000-00-00 returns HH:MM:SS string' do
     t = Mysql::Time.new 0, 0, 0, 1, 57, 15
     t.to_s.should == "01:57:15"
-  end
-end
-
-describe 'Mysql' do
-  before do
-    GC.disable
-  end
-  after do
-    GC.enable
-  end
-  def get_stmt_cnt(my)
-    cnt, = my.simple_query("select VARIABLE_VALUE from INFORMATION_SCHEMA.SESSION_STATUS where VARIABLE_NAME='PREPARED_STMT_COUNT'").fetch
-    cnt.to_i
-  end
-  describe 'with prepared_statmement_cache_size=0' do
-    it 'does not use cache' do
-      Mysql.connect URL, :prepared_statement_cache_size=>0 do |m|
-        cnt = get_stmt_cnt m
-        m.query 'select ?', 123
-        m.query 'select ?', 123
-        m.query 'select ?', 123
-        cnt2 = get_stmt_cnt m
-        cnt2.should == cnt + 3
-      end
-    end
-  end
-  describe 'with prepared_statmement_cache_size>0' do
-    it 'use cache' do
-      Mysql.connect URL, :prepared_statement_cache_size=>1 do |m|
-        cnt = get_stmt_cnt m
-        m.query 'select ?', 123
-        m.query 'select ?', 123
-        m.query 'select ?', 123
-        cnt2 = get_stmt_cnt m
-        cnt2.should == cnt + 1
-
-        cnt = get_stmt_cnt m
-        m.query 'select 1'
-        m.query 'select 2'
-        m.query 'select 3'
-        cnt2 = get_stmt_cnt m
-        cnt2.should == cnt + 3
-      end
-    end
   end
 end
 

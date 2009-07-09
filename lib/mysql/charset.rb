@@ -1,7 +1,7 @@
 # Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
-require "mysql/error"
+require "#{File.dirname __FILE__}/error"
 
 class Mysql
   class Charset

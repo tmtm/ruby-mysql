@@ -3,7 +3,7 @@
 == Description
 MySQL connector for Ruby.
 
-ALPHA バージョンです。将来のバージョンで互換がない変更がされる可能性あります。
+ALPHA バージョンです。将来のバージョンで互換がない変更がされる可能性があります。
 
 == Installation
 

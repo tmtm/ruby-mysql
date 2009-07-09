@@ -1,15 +1,16 @@
-# Copyright (C) 2008 TOMITA Masahiro
+# Copyright (C) 2008-2009 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
-$LOAD_PATH.unshift File.dirname(__FILE__)
 require "enumerator"
-require "mysql/constants"
-require "mysql/error"
-require "mysql/charset"
-require "mysql/protocol"
-require "mysql/cache"
+require "uri"
 
 class Mysql
+
+  dir = File.dirname __FILE__
+  require "#{dir}/mysql/constants"
+  require "#{dir}/mysql/error"
+  require "#{dir}/mysql/charset"
+  require "#{dir}/mysql/protocol"
 
   VERSION            = 30000               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
@@ -36,7 +37,6 @@ class Mysql
 #    :report_data_truncation  => x,
 #    :reconnect               => x,
 #    :ssl_verify_server_cert  => x,
-    :prepared_statement_cache_size => Integer,
   }  # :nodoc:
 
   OPT2FLAG = {
@@ -120,7 +120,6 @@ class Mysql
     @read_timeout = nil
     @write_timeout = nil
     @init_command = nil
-    @prepared_statement_cache_size = nil
     @affected_rows = nil
     @server_version = nil
     @sqlstate = "00000"
@@ -129,6 +128,11 @@ class Mysql
     set_option opt
   end
 
+  # :call-seq:
+  # connect(conninfo, opt={})
+  #
+  # connect to mysql server.
+  # arguments are same as new().
   def connect(*args)
     param, opt = conninfo(*args)
     set_option opt
@@ -149,11 +153,11 @@ class Mysql
       @protocol.send_packet auth_packet
       @protocol.read            # skip OK packet
     end
-    @stmt_cache = Cache.new(@prepared_statement_cache_size)
     simple_query @init_command if @init_command
     return self
   end
 
+  # disconnect from mysql.
   def close
     if @protocol
       @protocol.synchronize do
@@ -178,38 +182,33 @@ class Mysql
   end
 
   # Execute query string.
-  # If str begin with "sel" or params is specified, then the query is executed as prepared-statement automatically.
+  # If param is specified, then the query is executed as prepared-statement automatically.
   # So the values in result set are not only String.
   # === Argument
   # str :: [String] Query.
   # params :: Parameters corresponding to place holder (`?') in str.
+  # block :: if it is given then it is evaluated with Result object as argument.
   # === Return
   # Mysql::Statement :: If result set exist when str begin with "sel".
   # Mysql::Result :: If result set exist when str does not begin with "sel".
-  # nil :: If result set does not exist.
+  # nil :: If the query does not return result set.
   # === Example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
-  def query(str, *params)
-    if not params.empty? or str =~ /\A\s*sel/i
-      st = @stmt_cache.get str do |s|
-        prepare s
-      end
-      st.execute(*params)
-      if st.fields.empty?
-        @affected_rows = st.affected_rows
-        @insert_id = st.insert_id
-        @server_status = st.server_status
-        @warning_count = st.warning_count
-        return nil
-      end
-      return st
+  def query(str, *params, &block)
+    if params.empty?
+      res = simple_query(str, &block)
     else
-      return simple_query(str)
+      res = prepare_query(str, *params, &block)
     end
+    if res && block
+      yield res
+      return self
+    end
+    return res
   end
 
   # Execute query string.
-  # The values in result set are String even if it is numeric.
+  # The values in result set are converted to Ruby object.
   # === Argument
   # str :: [String] query string
   # === Return
@@ -217,9 +216,8 @@ class Mysql
   # nil :: If result set is not eixst.
   # === Example
   #  my.simple_query("select 1,NULL,'abc'").fetch  # => ["1", nil, "abc"]
-  def simple_query(str, &block)
+  def simple_query(str)
     @affected_rows = @insert_id = @server_status = @warning_count = 0
-    @fields = nil
     @protocol.synchronize do
       begin
         @protocol.reset
@@ -228,20 +226,39 @@ class Mysql
         if res_packet.field_count == 0
           @affected_rows, @insert_id, @server_status, @warning_conut =
             res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
+          return nil
         else
-          @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+          fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
           @protocol.read_eof_packet
+          return SimpleQueryResult.new self, fields
         end
       rescue ServerError => e
         @sqlstate = e.sqlstate
         raise
       end
-      if block
-        yield Result.new(self, @fields)
-        return self
-      end
-      return @fields && Result.new(self, @fields)
     end
+  end
+
+  # Execute query string by prepared statement.
+  # === Argument
+  # str :: [String] query string
+  # params :: Parameters corresponding to place holder (`?') in str.
+  # === Return
+  # Mysql::Result :: If result set is exist.
+  # nil :: If result set is not eixst.
+  # === Example
+  #  my.prepare_query("select ?,?", 1, nil, "abc").fetch  # => ["1", nil, "abc"]
+  def prepare_query(str, *params)
+    st = prepare(str)
+    res = st.execute(*params)
+    if st.fields.empty?
+      @affected_rows = st.affected_rows
+      @insert_id = st.insert_id
+      @server_status = st.server_status
+      @warning_count = st.warning_count
+    end
+    st.close
+    return res
   end
 
   # Parse prepared-statement.
@@ -339,9 +356,8 @@ class Mysql
         end
       else
         if args.first =~ /\Amysql:/
-          require "uri" unless defined? URI
           uri = URI.parse args.first
-        elsif defined? URI and args.first.is_a? URI
+        elsif args.first.is_a? URI
           uri = args.first
         else
           raise ArgumentError, "Invalid argument: #{args.first.inspect}"
@@ -395,7 +411,6 @@ class Mysql
     @init_command = opt[:init_command] || @init_command
     @read_timeout = opt[:read_timeout] || @read_timeout
     @write_timeout = opt[:write_timeout] || @write_timeout
-    @prepared_statement_cache_size = opt[:prepared_statement_cache_size] || @prepared_statement_cache_size || 10
   end
 
   class Field
@@ -431,25 +446,28 @@ class Mysql
   end
 
   class Result
-
     include Enumerable
 
     attr_reader :fields
 
     def initialize(mysql, fields)
-      @mysql = mysql
       @fields = fields
       @fieldname_with_table = nil
-      @field_index = 0
-      @records = recv_all_records mysql.protocol, @fields, mysql.charset
       @index = 0
+      @records = recv_all_records mysql.protocol, fields, mysql.charset
+    end
+
+    def size
+      @records.size
     end
 
     def fetch_row
+      return nil if @index >= @records.size
       rec = @records[@index]
-      @index += 1 if @index < @records.length
+      @index += 1
       return rec
     end
+
     alias fetch fetch_row
 
     def fetch_hash(with_table=nil)
@@ -481,6 +499,9 @@ class Mysql
       end
       self
     end
+  end
+
+  class SimpleQueryResult < Result
 
     private
 
@@ -491,43 +512,69 @@ class Mysql
         break if Protocol.eof_packet? data
         rec = fields.map do |f|
           v = Protocol.lcs2str! data
-          v.nil? ? nil : f.flags & Field::BINARY_FLAG == 0 ? charset.force_encoding(v) : Charset.to_binary(v)
+          convert_str_to_ruby_value f, v, charset
         end
         ret.push rec
       end
       ret
     end
-  end
 
-  class Time
-    def initialize(year=0, month=0, day=0, hour=0, minute=0, second=0, neg=false, second_part=0)
-      @year, @month, @day, @hour, @minute, @second, @neg, @second_part =
-        year.to_i, month.to_i, day.to_i, hour.to_i, minute.to_i, second.to_i, neg, second_part.to_i
-    end
-    attr_accessor :year, :month, :day, :hour, :minute, :second, :neg, :second_part
-    alias mon month
-    alias min minute
-    alias sec second
-
-    def ==(other)
-      other.is_a?(Mysql::Time) &&
-        @year == other.year && @month == other.month && @day == other.day &&
-        @hour == other.hour && @minute == other.minute && @second == other.second &&
-        @neg == neg && @second_part == other.second_part
-    end
-
-    def eql?(other)
-      self == other
-    end
-
-    def to_s
-      if year == 0 and mon == 0 and day == 0
-        sprintf "%02d:%02d:%02d", hour, min, sec
+    def convert_str_to_ruby_value(field, value, charset)
+      return nil if value.nil?
+      case field.type
+      when Field::TYPE_BIT, Field::TYPE_DECIMAL, Field::TYPE_VARCHAR,
+        Field::TYPE_NEWDECIMAL, Field::TYPE_TINY_BLOB,
+        Field::TYPE_MEDIUM_BLOB, Field::TYPE_LONG_BLOB,
+        Field::TYPE_BLOB, Field::TYPE_VAR_STRING, Field::TYPE_STRING
+        field.flags & Field::BINARY_FLAG == 0 ? charset.force_encoding(value) : Charset.to_binary(value)
+      when Field::TYPE_TINY, Field::TYPE_SHORT, Field::TYPE_LONG,
+        Field::TYPE_LONGLONG, Field::TYPE_INT24, Field::TYPE_YEAR
+        value.to_i
+      when Field::TYPE_FLOAT, Field::TYPE_DOUBLE
+        value.to_f
+      when Field::TYPE_TIMESTAMP, Field::TYPE_DATE, Field::TYPE_DATETIME, Field::TYPE_NEWDATE
+        unless value =~ /\A(\d\d\d\d).(\d\d).(\d\d)(?:.(\d\d).(\d\d).(\d\d))?\z/
+          raise "unsupported format date type: #{value}"
+        end
+        Time.new($1, $2, $3, $4, $5, $6)
+      when Field::TYPE_TIME
+        unless value =~ /\A(-?)(\d+).(\d\d).(\d\d)?\z/
+          raise "unsupported format time type: #{value}"
+        end
+        Time.new(0, 0, 0, $2, $3, $4, $1=="-")
       else
-        sprintf "%04d-%02d-%02d %02d:%02d:%02d", year, mon, day, hour, min, sec
+        raise "unknown mysql type: #{field.type}"
       end
     end
+  end
 
+  class StatementResult < Result
+
+    private
+
+    def recv_all_records(protocol, fields, charset)
+      ret = []
+      while rec = parse_data(protocol.read, fields, charset)
+        ret.push rec
+      end
+      ret
+    end
+
+    def parse_data(data, fields, charset)
+      return nil if Protocol.eof_packet? data
+      data.slice!(0)  # skip first byte
+      null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("C*")
+      ret = (0...fields.length).map do |i|
+        if null_bit_map[(i+2)/8][(i+2)%8] == 1
+          nil
+        else
+          unsigned = fields[i].flags & Field::UNSIGNED_FLAG != 0
+          v = Protocol.net2value(data, fields[i].type, unsigned)
+          fields[i].flags & Field::BINARY_FLAG == 0 ? charset.force_encoding(v) : Charset.to_binary(v)
+        end
+      end
+      ret
+    end
   end
 
   class Statement
@@ -536,7 +583,6 @@ class Mysql
 
     attr_reader :affected_rows, :insert_id, :server_status, :warning_count
     attr_reader :param_count, :fields, :sqlstate
-    attr_accessor :cursor_type
 
     def self.finalizer(protocol, statement_id)
       proc do
@@ -556,7 +602,6 @@ class Mysql
       @affected_rows = @insert_id = @server_status = @warning_count = 0
       @eof = false
       @sqlstate = "00000"
-      @cursor_type = CURSOR_TYPE_NO_CURSOR
       @param_count = nil
       @records = nil
     end
@@ -604,85 +649,23 @@ class Mysql
         begin
           @sqlstate = "00000"
           @protocol.reset
-          cursor_type = @fields.empty? ? CURSOR_TYPE_NO_CURSOR : @cursor_type
-          @protocol.send_packet Protocol::ExecutePacket.new(@statement_id, cursor_type, values)
+          @protocol.send_packet Protocol::ExecutePacket.new(@statement_id, CURSOR_TYPE_NO_CURSOR, values)
           res_packet = @protocol.read_result_packet
           raise ProtocolError, "invalid field_count" unless res_packet.field_count == @fields.length
           @fieldname_with_table = nil
           if res_packet.field_count == 0
             @affected_rows, @insert_id, @server_status, @warning_conut =
               res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
-            @records = nil
-          else
-            @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
-            @protocol.read_eof_packet
-            @eof = false
-            @index = 0
-            if @cursor_type == CURSOR_TYPE_NO_CURSOR
-              @records = []
-              while rec = parse_data(@protocol.read)
-                @records.push rec
-              end
-            end
+            return nil
           end
-          return self
+          @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+          @protocol.read_eof_packet
+          return StatementResult.new(@mysql, @fields)
         rescue ServerError => e
           @sqlstate = e.sqlstate
           raise
         end
       end
-    end
-
-    def fetch_row
-      return nil if @fields.empty?
-      if @records
-        rec = @records[@index]
-        @index += 1 if @index < @records.length
-        return rec
-      end
-      return nil if @eof
-      @protocol.synchronize do
-        @protocol.reset
-        @protocol.send_packet Protocol::FetchPacket.new(@statement_id, 1)
-        data = @protocol.read
-        if Protocol.eof_packet? data
-          @eof = true
-          return nil
-        end
-        @protocol.read_eof_packet
-        return parse_data(data)
-      end
-    end
-    alias fetch fetch_row
-
-    def fetch_hash(with_table=nil)
-      row = fetch_row
-      return nil unless row
-      if with_table and @fieldname_with_table.nil?
-        @fieldname_with_table = @fields.map{|f| [f.table, f.name].join(".")}
-      end
-      ret = {}
-      @fields.each_index do |i|
-        fname = with_table ? @fieldname_with_table[i] : @fields[i].name
-        ret[fname] = row[i]
-      end
-      ret
-    end
-
-    def each(&block)
-      return enum_for(:each) unless block
-      while rec = fetch_row
-        block.call rec
-      end
-      self
-    end
-
-    def each_hash(with_table=nil, &block)
-      return enum_for(:each_hash, with_table) unless block
-      while rec = fetch_hash(with_table)
-        block.call rec
-      end
-      self
     end
 
     def close
@@ -695,24 +678,37 @@ class Mysql
         end
       end
     end
+  end
 
-    private
+  class Time
+    def initialize(year=0, month=0, day=0, hour=0, minute=0, second=0, neg=false, second_part=0)
+      @year, @month, @day, @hour, @minute, @second, @neg, @second_part =
+        year.to_i, month.to_i, day.to_i, hour.to_i, minute.to_i, second.to_i, neg, second_part.to_i
+    end
+    attr_accessor :year, :month, :day, :hour, :minute, :second, :neg, :second_part
+    alias mon month
+    alias min minute
+    alias sec second
 
-    def parse_data(data)
-      return nil if Protocol.eof_packet? data
-      data.slice!(0)  # skip first byte
-      null_bit_map = data.slice!(0, (@fields.length+7+2)/8).unpack("C*")
-      ret = (0...@fields.length).map do |i|
-        if null_bit_map[(i+2)/8][(i+2)%8] == 1
-          nil
-        else
-          unsigned = @fields[i].flags & Field::UNSIGNED_FLAG != 0
-          v = Protocol.net2value(data, @fields[i].type, unsigned)
-          @fields[i].flags & Field::BINARY_FLAG == 0 ? @mysql.charset.force_encoding(v) : Charset.to_binary(v)
-        end
+    def ==(other)
+      other.is_a?(Mysql::Time) &&
+        @year == other.year && @month == other.month && @day == other.day &&
+        @hour == other.hour && @minute == other.minute && @second == other.second &&
+        @neg == neg && @second_part == other.second_part
+    end
+
+    def eql?(other)
+      self == other
+    end
+
+    def to_s
+      if year == 0 and mon == 0 and day == 0
+        sprintf "%02d:%02d:%02d", hour, min, sec
+      else
+        sprintf "%04d-%02d-%02d %02d:%02d:%02d", year, mon, day, hour, min, sec
       end
-      ret
     end
 
   end
+
 end
