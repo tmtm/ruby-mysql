@@ -18,6 +18,7 @@ ALPHA バージョンです。将来のバージョンで互換がない変更�
 * Ruby だけで書かれているのでコンパイル不要です。
 * Ruby 1.9 の M17N に対応しています。
 * Ruby/MySQL 0.x, MySQL/Ruby 2.x とは互換がありません。
+  require "mysql/compat" すれば、MySQL/Ruby 2.x 用のプログラムもそこそこ動くかもしれません。
 * 英語ドキュメントがありません。
 
 == Synopsis

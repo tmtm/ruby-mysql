@@ -4,6 +4,14 @@
 require "enumerator"
 require "uri"
 
+# MySQL connection class.
+# === Example
+#  Mysql.connect("mysql://user:password@hostname:port/dbname") do |my|
+#    res = my.query "select col1,col2 from tbl where id=?", 123
+#    res.each do |c1, c2|
+#      p c1, c2
+#    end
+#  end
 class Mysql
 
   dir = File.dirname __FILE__
@@ -12,7 +20,7 @@ class Mysql
   require "#{dir}/mysql/charset"
   require "#{dir}/mysql/protocol"
 
-  VERSION            = 30000               # Version number of this library
+  VERSION            = 30001               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
@@ -182,16 +190,17 @@ class Mysql
   end
 
   # Execute query string.
-  # If param is specified, then the query is executed as prepared-statement automatically.
-  # So the values in result set are not only String.
+  # If params is specified, then the query is executed as prepared-statement automatically.
   # === Argument
   # str :: [String] Query.
   # params :: Parameters corresponding to place holder (`?') in str.
-  # block :: if it is given then it is evaluated with Result object as argument.
+  # block :: If it is given then it is evaluated with Result object as argument.
   # === Return
-  # Mysql::Statement :: If result set exist when str begin with "sel".
-  # Mysql::Result :: If result set exist when str does not begin with "sel".
+  # Mysql::Result :: If result set exist.
   # nil :: If the query does not return result set.
+  # self :: If block is specified.
+  # === Block parameter
+  # [ Mysql::Result ]
   # === Example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
   def query(str, *params, &block)
@@ -207,16 +216,7 @@ class Mysql
     return res
   end
 
-  # Execute query string.
-  # The values in result set are converted to Ruby object.
-  # === Argument
-  # str :: [String] query string
-  # === Return
-  # Mysql::Result :: If result set is exist.
-  # nil :: If result set is not eixst.
-  # === Example
-  #  my.simple_query("select 1,NULL,'abc'").fetch  # => ["1", nil, "abc"]
-  def simple_query(str)
+  def simple_query(str)  # :nodoc:
     @affected_rows = @insert_id = @server_status = @warning_count = 0
     @protocol.synchronize do
       begin
@@ -239,16 +239,7 @@ class Mysql
     end
   end
 
-  # Execute query string by prepared statement.
-  # === Argument
-  # str :: [String] query string
-  # params :: Parameters corresponding to place holder (`?') in str.
-  # === Return
-  # Mysql::Result :: If result set is exist.
-  # nil :: If result set is not eixst.
-  # === Example
-  #  my.prepare_query("select ?,?", 1, nil, "abc").fetch  # => ["1", nil, "abc"]
-  def prepare_query(str, *params)
+  def prepare_query(str, *params)  # :nodoc:
     st = prepare(str)
     res = st.execute(*params)
     if st.fields.empty?
@@ -262,10 +253,13 @@ class Mysql
   end
 
   # Parse prepared-statement.
+  # If block is specified then prepared-statement is closed when exiting the block.
   # === Argument
-  # str :: [String] query string
+  # str   :: [String] query string
+  # block :: If it is given then it is evaluated with Mysql::Statement object as argument.
   # === Return
   # Mysql::Statement :: Prepared-statement object
+  # The block value if block is given.
   def prepare(str, &block)
     st = Statement.new self
     st.prepare str
@@ -395,8 +389,6 @@ class Mysql
     return param, opt
   end
 
-  private
-
   def set_option(opt)
     opt.each do |k,v|
       raise ClientError, "unknown option: #{k.inspect}" unless OPTIONS.key? k
@@ -413,6 +405,7 @@ class Mysql
     @write_timeout = opt[:write_timeout] || @write_timeout
   end
 
+  # Field class
   class Field
     attr_reader :db, :table, :org_table, :name, :org_name, :charsetnr, :length, :type, :flags, :decimals, :default
     alias :def :default
@@ -425,14 +418,17 @@ class Mysql
       @flags |= NUM_FLAG if is_num_type?
     end
 
+    # Return true if numeric field.
     def is_num?
       @flags & NUM_FLAG != 0
     end
 
+    # Return true if not null field.
     def is_not_null?
       @flags & NOT_NULL_FLAG != 0
     end
 
+    # Return true if primary key field.
     def is_pri_key?
       @flags & PRI_KEY_FLAG != 0
     end
@@ -445,6 +441,7 @@ class Mysql
 
   end
 
+  # Result set
   class Result
     include Enumerable
 
@@ -501,6 +498,7 @@ class Mysql
     end
   end
 
+  # Result set for simple query
   class SimpleQueryResult < Result
 
     private
@@ -548,6 +546,7 @@ class Mysql
     end
   end
 
+  # Result set for prepared statement
   class StatementResult < Result
 
     private
@@ -577,10 +576,8 @@ class Mysql
     end
   end
 
+  # Prepared statement
   class Statement
-
-    include Enumerable
-
     attr_reader :affected_rows, :insert_id, :server_status, :warning_count
     attr_reader :param_count, :fields, :sqlstate
 
@@ -639,6 +636,9 @@ class Mysql
       self
     end
 
+    # execute prepared-statement.
+    # === Return
+    # Mysql::Result
     def execute(*values)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count
@@ -701,7 +701,8 @@ class Mysql
 
     def to_s
       if year == 0 and mon == 0 and day == 0
-        sprintf "%02d:%02d:%02d", hour, min, sec
+        h = neg ? hour * -1 : hour
+        sprintf "%02d:%02d:%02d", h, min, sec
       else
         sprintf "%04d-%02d-%02d %02d:%02d:%02d", year, mon, day, hour, min, sec
       end

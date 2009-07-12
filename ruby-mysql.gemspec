@@ -1,14 +1,14 @@
 Gem::Specification.new do |s|
   s.name = %q{ruby-mysql}
-  s.version = "3.0.0"
+  s.version = "3.0.1"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["tommy"]
-  s.date = %q{2009-03-22}
+  s.date = %q{2009-07-12}
   s.description = %q{MySQL connector for Ruby}
   s.email = %q{tommy@tmtm.org}
   s.extra_rdoc_files = ["README", "ChangeLog"]
-  s.files = ["README", "ChangeLog", "Rakefile", "lib/mysql", "lib/mysql/constants.rb", "lib/mysql/compat.rb", "lib/mysql/protocol.rb", "lib/mysql/cache.rb", "lib/mysql/charset.rb", "lib/mysql/error.rb", "lib/mysql.rb"]
+  s.files = ["README", "ChangeLog", "lib/mysql", "lib/mysql/constants.rb", "lib/mysql/compat.rb", "lib/mysql/protocol.rb", "lib/mysql/charset.rb", "lib/mysql/error.rb", "lib/mysql.rb"]
   s.has_rdoc = true
   s.homepage = %q{http://github.com/tmtm/ruby-mysql}
   s.rdoc_options = ["--title", "ruby-mysql documentation", "--charset", "utf-8", "--opname", "index.html", "--line-numbers", "--main", "README", "--inline-source", "--exclude", "^(examples|extras)/"]

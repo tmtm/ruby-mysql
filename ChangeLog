@@ -1,3 +1,16 @@
+2009-07-12  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* version 3.0.1-alpha
+
+2009-07-10  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/compat.rb: updated.
+
+	* lib/mysql.rb: Mysql#query without parameter no longer use prepared statement.
+	Mysql::Statement#execute returns Mysql::Result.
+	Mysql::Statement no longer have some methods: fetch_row(), fetch_hash(), each(), each_hash().
+	Mysql::Result#fetch returns value that converted to Ruby object.
+	
 2009-04-12  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* for Ruby 1.8.6
