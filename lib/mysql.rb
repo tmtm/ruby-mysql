@@ -169,6 +169,7 @@ class Mysql
   def close
     if @protocol
       @protocol.synchronize do
+        @protocol.reset
         @protocol.send_packet Protocol::QuitPacket.new
         @protocol.close
         @protocol = nil

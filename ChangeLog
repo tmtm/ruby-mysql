@@ -1,3 +1,7 @@
+2009-07-14  TOMITA Masahiro  <tommy@tmtm.org>
+
+	*  mysql.rb: Fix that Mysql#close is incorrect.
+
 2009-07-12  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* version 3.0.1-alpha
