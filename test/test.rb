@@ -16,7 +16,7 @@ class TC_Mysql < Test::Unit::TestCase
   end
 
   def test_version()
-    assert_equal(30000, Mysql::VERSION)
+    assert_equal(30001, Mysql::VERSION)
   end
 
   def test_init()
