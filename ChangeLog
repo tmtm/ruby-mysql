@@ -1,3 +1,7 @@
+2009-07-24  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql.rb: correspond to Ruby 1.9.1.
+
 2009-07-14  TOMITA Masahiro  <tommy@tmtm.org>
 
 	*  mysql.rb: Fix that Mysql#close is incorrect.
