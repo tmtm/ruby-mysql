@@ -708,6 +708,7 @@ describe 'Mysql::Result' do
     my.query "create temporary table t (a int, b char(10))"
     my.query "insert into t values (123,'abc'),(456,'def')"
     @res = my.query "select a,b from t"
+    @enum_class = Enumerable::Enumerator rescue Enumerator
   end
   it '#fetch_row returns Array of String' do
     @res.fetch_row.should == [123, "abc"]
@@ -718,9 +719,9 @@ describe 'Mysql::Result' do
   it '#fetch_hash(true) returns Hash that key is table name and column name' do
     @res.fetch_hash(true).should == {"t.a"=>123, "t.b"=>"abc"}
   end
-  it '#each without block returns Enumerable::Enumerator' do
+  it '#each without block returns Enumerator' do
     e = @res.each
-    e.should be_kind_of(Enumerable::Enumerator)
+    e.should be_kind_of(@enum_class)
     e.entries.should == [[123,"abc"], [456,"def"]]
   end
   it '#each with block returns self' do
@@ -728,9 +729,9 @@ describe 'Mysql::Result' do
     @res.each{|r| rec.push r}.should == @res
     rec.should == [[123,"abc"], [456,"def"]]
   end
-  it '#each_hash without block returns Enumerable::Enumerator' do
+  it '#each_hash without block returns Enumerator' do
     e = @res.each_hash
-    e.should be_kind_of(Enumerable::Enumerator)
+    e.should be_kind_of(@enum_class)
     e.entries.should == [{"a"=>123,"b"=>"abc"}, {"a"=>456,"b"=>"def"}]
   end
   it '#each_hash with block returns self' do

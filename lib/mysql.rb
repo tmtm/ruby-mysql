@@ -521,7 +521,9 @@ class Mysql
     def convert_str_to_ruby_value(field, value, charset)
       return nil if value.nil?
       case field.type
-      when Field::TYPE_BIT, Field::TYPE_DECIMAL, Field::TYPE_VARCHAR,
+      when Field::TYPE_BIT
+        Charset.to_binary(value)
+      when Field::TYPE_DECIMAL, Field::TYPE_VARCHAR,
         Field::TYPE_NEWDECIMAL, Field::TYPE_TINY_BLOB,
         Field::TYPE_MEDIUM_BLOB, Field::TYPE_LONG_BLOB,
         Field::TYPE_BLOB, Field::TYPE_VAR_STRING, Field::TYPE_STRING
@@ -564,13 +566,19 @@ class Mysql
       return nil if Protocol.eof_packet? data
       data.slice!(0)  # skip first byte
       null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("C*")
-      ret = (0...fields.length).map do |i|
+      ret = fields.each_with_index.map do |f, i|
         if null_bit_map[(i+2)/8][(i+2)%8] == 1
           nil
         else
-          unsigned = fields[i].flags & Field::UNSIGNED_FLAG != 0
-          v = Protocol.net2value(data, fields[i].type, unsigned)
-          fields[i].flags & Field::BINARY_FLAG == 0 ? charset.force_encoding(v) : Charset.to_binary(v)
+          unsigned = f.flags & Field::UNSIGNED_FLAG != 0
+          v = Protocol.net2value(data, f.type, unsigned)
+          if v.is_a? Numeric or v.is_a? Mysql::Time
+            v
+          elsif f.type == Field::TYPE_BIT or f.flags & Field::BINARY_FLAG != 0
+            Charset.to_binary(v)
+          else
+            charset.force_encoding(v)
+          end
         end
       end
       ret
