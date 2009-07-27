@@ -656,6 +656,26 @@ EOS
       (@mysql.charset = cs).should == cs
     end
   end
+
+  describe '#list_fields' do
+    it 'return Array of Mysql::Field' do
+      @mysql.query("create temporary table t (i int, c char(16), d date)")
+      ret = @mysql.list_fields("t")
+      ret.size.should == 3
+      ret[0].name.should == "i"
+      ret[0].table.should == "t"
+      ret[0].type.should == Mysql::Field::TYPE_LONG
+      ret[0].length.should == 11
+      ret[1].name.should == "c"
+      ret[1].table.should == "t"
+      ret[1].type.should == Mysql::Field::TYPE_STRING
+      ret[1].length.should == 16
+      ret[2].name.should == "d"
+      ret[2].table.should == "t"
+      ret[2].type.should == Mysql::Field::TYPE_DATE
+      ret[2].length.should == 10
+    end
+  end
 end
 
 describe 'Mysql::Statement' do

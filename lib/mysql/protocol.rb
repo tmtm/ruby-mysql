@@ -533,5 +533,17 @@ class Mysql
         [Mysql::COM_STMT_CLOSE, statement_id].pack("CV")
       end
     end
+
+    class FieldListPacket < TxPacket
+      attr_accessor :table, :field
+
+      def initialize(*args)
+        @table, @field = args
+      end
+
+      def serialize
+        [Mysql::COM_FIELD_LIST, "#{@table}\0#{@field}"].pack("Ca*")
+      end
+    end
   end
 end

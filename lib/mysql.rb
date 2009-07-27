@@ -314,6 +314,28 @@ class Mysql
     return st
   end
 
+  # Get field(column) list
+  # === Argument
+  # table :: [String] table name.
+  # === Return
+  # Array of Mysql::Field
+  def list_fields(table)
+    @protocol.synchronize do
+      begin
+        @protocol.reset
+        @protocol.send_packet Protocol::FieldListPacket.new(table)
+        fields = []
+        until Protocol.eof_packet?(data = @protocol.read)
+          fields.push Field.new(Protocol::FieldPacket.parse(data))
+        end
+        return fields
+      rescue ServerError => e
+        @sqlstate = e.sqlstate
+        raise
+      end
+    end
+  end
+
   private
 
   # analyze argument and returns connection-parameter and option.
