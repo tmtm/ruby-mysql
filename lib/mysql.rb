@@ -229,7 +229,7 @@ class Mysql
             res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
           return nil
         else
-          @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+          @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
           @protocol.read_eof_packet
           return SimpleQueryResult.new self, @fields
         end
@@ -518,27 +518,49 @@ class Mysql
       ret
     end
 
+    MYSQL_RUBY_TYPE = {
+      Field::TYPE_BIT         => :binary,
+      Field::TYPE_DECIMAL     => :string,
+      Field::TYPE_VARCHAR     => :string,
+      Field::TYPE_NEWDECIMAL  => :string,
+      Field::TYPE_TINY_BLOB   => :string,
+      Field::TYPE_MEDIUM_BLOB => :string,
+      Field::TYPE_LONG_BLOB   => :string,
+      Field::TYPE_BLOB        => :string,
+      Field::TYPE_VAR_STRING  => :string,
+      Field::TYPE_STRING      => :string,
+      Field::TYPE_TINY        => :integer,
+      Field::TYPE_SHORT       => :integer,
+      Field::TYPE_LONG        => :integer,
+      Field::TYPE_LONGLONG    => :integer,
+      Field::TYPE_INT24       => :integer,
+      Field::TYPE_YEAR        => :integer,
+      Field::TYPE_FLOAT       => :float,
+      Field::TYPE_DOUBLE      => :float,
+      Field::TYPE_TIMESTAMP   => :datetime,
+      Field::TYPE_DATE        => :datetime,
+      Field::TYPE_DATETIME    => :datetime,
+      Field::TYPE_NEWDATE     => :datetime,
+      Field::TYPE_TIME        => :time,
+    }
+
     def convert_str_to_ruby_value(field, value, charset)
       return nil if value.nil?
-      case field.type
-      when Field::TYPE_BIT
+      case MYSQL_RUBY_TYPE[field.type]
+      when :binary
         Charset.to_binary(value)
-      when Field::TYPE_DECIMAL, Field::TYPE_VARCHAR,
-        Field::TYPE_NEWDECIMAL, Field::TYPE_TINY_BLOB,
-        Field::TYPE_MEDIUM_BLOB, Field::TYPE_LONG_BLOB,
-        Field::TYPE_BLOB, Field::TYPE_VAR_STRING, Field::TYPE_STRING
+      when :string
         field.flags & Field::BINARY_FLAG == 0 ? charset.force_encoding(value) : Charset.to_binary(value)
-      when Field::TYPE_TINY, Field::TYPE_SHORT, Field::TYPE_LONG,
-        Field::TYPE_LONGLONG, Field::TYPE_INT24, Field::TYPE_YEAR
+      when :integer
         value.to_i
-      when Field::TYPE_FLOAT, Field::TYPE_DOUBLE
+      when :float
         value.to_f
-      when Field::TYPE_TIMESTAMP, Field::TYPE_DATE, Field::TYPE_DATETIME, Field::TYPE_NEWDATE
+      when :datetime
         unless value =~ /\A(\d\d\d\d).(\d\d).(\d\d)(?:.(\d\d).(\d\d).(\d\d))?\z/
           raise "unsupported format date type: #{value}"
         end
         Time.new($1, $2, $3, $4, $5, $6)
-      when Field::TYPE_TIME
+      when :time
         unless value =~ /\A(-?)(\d+).(\d\d).(\d\d)?\z/
           raise "unsupported format time type: #{value}"
         end
@@ -565,9 +587,9 @@ class Mysql
     def parse_data(data, fields, charset)
       return nil if Protocol.eof_packet? data
       data.slice!(0)  # skip first byte
-      null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("C*")
+      null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("b*").first
       ret = fields.each_with_index.map do |f, i|
-        if null_bit_map[(i+2)/8][(i+2)%8] == 1
+        if null_bit_map[i+2] == ?1
           nil
         else
           unsigned = f.flags & Field::UNSIGNED_FLAG != 0
@@ -628,7 +650,7 @@ class Mysql
             @protocol.read_eof_packet
           end
           if res_packet.field_count > 0
-            fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+            fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
             @protocol.read_eof_packet
           else
             fields = []
@@ -665,7 +687,7 @@ class Mysql
               res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
             return nil
           end
-          @fields = (1..res_packet.field_count).map{Field.new @protocol.read_field_packet}
+          @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
           @protocol.read_eof_packet
           return StatementResult.new(@mysql, @fields)
         rescue ServerError => e

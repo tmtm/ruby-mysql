@@ -1,4 +1,4 @@
-# Copyright (C) 2008 TOMITA Masahiro
+# Copyright (C) 2008-2009 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 require "socket"
@@ -35,24 +35,19 @@ class Mysql
     # Integer or nil
     def self.lcb2int!(lcb)
       return nil if lcb.empty?
-      case ord lcb
-      when 251
-        ord! lcb
+      case v = lcb.slice!(0)
+      when ?\xfb
         return nil
-      when 252
-        _, v = lcb.unpack("Cv")
-        lcb[0, 3] = ""
-        return v
-      when 253
-        v, = lcb.unpack("V")
-        lcb[0, 4] = ""
-        return v >> 8
-      when 254
-        _, v1, v2 = lcb.unpack("CVV")
-        lcb[0, 9] = ""
-        return (v2 << 32) | v1
+      when ?\xfc
+        return lcb.slice!(0,2).unpack("v").first
+      when ?\xfd
+        c, v = lcb.slice!(0,3).unpack("Cv")
+        return (v<<8)+c
+      when ?\xfe
+        v1, v2 = lcb.slice!(0,8).unpack("VV")
+        return (v2<<32)+v1
       else
-        return ord!(lcb)
+        return v.ord
       end
     end
 
@@ -67,7 +62,7 @@ class Mysql
     end
 
     def self.eof_packet?(data)
-      ord(data) == 0xfe && data.length == 5
+      data[0] == ?\xfe && data.length == 5
     end
 
     # Convert netdata to Ruby value
@@ -82,7 +77,7 @@ class Mysql
       when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB
         return Protocol.lcs2str!(data)
       when Field::TYPE_TINY
-        v = ord! data
+        v = data.slice!(0).ord
         return unsigned ? v : v < 128 ? v : v-256
       when Field::TYPE_SHORT
         v = data.slice!(0,2).unpack("v").first
@@ -99,11 +94,11 @@ class Mysql
       when Field::TYPE_DOUBLE
         return data.slice!(0,8).unpack("E").first
       when Field::TYPE_DATE, Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
-        len = ord! data
+        len = data.slice!(0).ord
         y, m, d, h, mi, s, bs = data.slice!(0,len).unpack("vCCCCCV")
         return Mysql::Time.new(y, m, d, h, mi, s, bs)
       when Field::TYPE_TIME
-        len = ord! data
+        len = data.slice!(0).ord
         sign, d, h, mi, s, sp = data.slice!(0,len).unpack("CVCCCV")
         h = d.to_i * 24 + h.to_i
         return Mysql::Time.new(0, 0, 0, h, mi, s, sign!=0, sp)
@@ -177,22 +172,6 @@ class Mysql
       return type, val
     end
 
-    if "".respond_to? :ord
-      def self.ord(str)
-        str.ord
-      end
-      def self.ord!(str)
-        str.slice!(0).ord
-      end
-    else
-      def self.ord(str)
-        str[0]
-      end
-      def self.ord!(str)
-        str.slice!(0)
-      end
-    end
-
     attr_reader :sqlstate
 
     # make socket connection to server.
@@ -262,7 +241,7 @@ class Mysql
       @sqlstate = "00000"
 
       # Error packet
-      if Protocol.ord(ret) == 0xff
+      if ret[0] == ?\xff
         f, errno, marker, @sqlstate, message = ret.unpack("Cvaa5a*")
         unless marker == "#"
           f, errno, message = ret.unpack("Cva*")    # Version 4.0 Error
@@ -483,7 +462,7 @@ class Mysql
     # Prepare result packet
     class PrepareResultPacket < RxPacket
       def self.parse(data)
-        raise ProtocolError, "invalid packet" unless Protocol.ord!(data) == 0x00
+        raise ProtocolError, "invalid packet" unless data.slice!(0) == ?\0
         statement_id, field_count, param_count, f, warning_count = data.unpack("VvvCv")
         raise ProtocolError, "invalid packet" unless f == 0x00
         self.new statement_id, field_count, param_count, warning_count
