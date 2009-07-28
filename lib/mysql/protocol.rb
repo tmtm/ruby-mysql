@@ -25,6 +25,7 @@ class Mysql
 
     # convert String to LengthCodedString
     def self.lcs(str)
+      str = Charset.to_binary str
       lcb(str.length)+str
     end
 

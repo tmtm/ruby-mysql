@@ -1,3 +1,7 @@
+2009-07-29  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/protocol.rb: treat M17N string correctly.
+
 2009-07-28  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql.rb, lib/mysql/protocol.rb: add Mysql#list_fields.

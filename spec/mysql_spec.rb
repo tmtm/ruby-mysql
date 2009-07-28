@@ -889,3 +889,19 @@ describe 'Mysql::Protocol::ExecutePacket#null_bitmap:' do
     st.null_bitmap([nil,1,nil,1,1,nil,nil,1,nil]).should == "\x65\x01"
   end
 end
+
+if "".respond_to? :encoding
+  describe 'several charset' do
+    it 'converted correctly' do
+      m = Mysql.connect URL
+      m.charset = "utf8"
+      m.query "create temporary table t (c1 char(10) charset utf8, c2 char(10) charset cp932, c3 char(10) charset eucjpms)"
+      utf8 = "\xe3\x81\x84\xe3\x82\x8d\xe3\x81\xaf".force_encoding "UTF-8"
+      cp932 = utf8.encode "CP932"
+      eucjp = utf8.encode "EUC-JP-MS"
+      m.query "insert into t (c1,c2,c3) values (?,?,?)", utf8, cp932, eucjp
+      m.query("select hex(c1),hex(c2),hex(c3) from t").fetch.should == ["E38184E3828DE381AF", "82A282EB82CD", "A4A4A4EDA4CF"]
+      m.query("select c1,c2,c3 from t").fetch.should == [utf8, utf8, utf8]
+    end
+  end
+end
