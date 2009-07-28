@@ -1,10 +1,10 @@
 Gem::Specification.new do |s|
   s.name = %q{ruby-mysql}
-  s.version = "3.0.1"
+  s.version = "3.0.2"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["tommy"]
-  s.date = %q{2009-07-12}
+  s.date = %q{2009-07-29}
   s.description = %q{MySQL connector for Ruby}
   s.email = %q{tommy@tmtm.org}
   s.extra_rdoc_files = ["README", "ChangeLog"]
