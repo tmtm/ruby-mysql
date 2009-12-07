@@ -20,7 +20,7 @@ class Mysql
   require "#{dir}/mysql/charset"
   require "#{dir}/mysql/protocol"
 
-  VERSION            = 30001               # Version number of this library
+  VERSION            = 20900               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
@@ -69,58 +69,58 @@ class Mysql
   attr_reader :protocol              #
   attr_reader :sqlstate
 
-  def self.new(*args, &block)  # :nodoc:
-    my = self.allocate
-    my.instance_eval{initialize(*args)}
-    return my unless block
-    begin
-      return block.call(my)
-    ensure
-      my.close
+  class << self
+    def init
+      my = self.allocate
+      my.instance_eval do
+        @fields = nil
+        @protocol = nil
+        @charset = nil
+        @connect_timeout = nil
+        @read_timeout = nil
+        @write_timeout = nil
+        @init_command = nil
+        @affected_rows = nil
+        @server_version = nil
+        @sqlstate = "00000"
+        @connected = false
+      end
+      my
     end
+
+    alias real_connect new
+    alias connect new
+
+    def escape_string(str)
+      str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
+        case s
+        when "\0" then "\\0"
+        when "\n" then "\\n"
+        when "\r" then "\\r"
+        when "\x1a" then "\\Z"
+        else "\\#{s}"
+        end
+      end
+    end
+    alias quote escape_string
+
+    def get_client_info
+      "2.9.0"
+    end
+    alias client_info get_client_info
   end
 
-  # === Return
-  # The value that block returns if block is specified.
-  # Otherwise this returns Mysql object.
-  def self.connect(*args, &block)
-    my = self.new(*args)
-    my.connect
-    return my unless block
-    begin
-      return block.call(my)
-    ensure
-      my.close
-    end
-  end
-
-  # :call-seq:
-  # new(conninfo, opt={})
-  # new(conninfo, opt={}) {|my| ...}
-  #
   # Connect to mysqld.
-  # If block is specified then the connection is closed when exiting the block.
+  #
   # === Argument
-  # conninfo ::
-  #   [String / URI / Hash] Connection information.
-  #   If conninfo is String then it's format must be "mysql://user:password@hostname:port/dbname".
-  #   If conninfo is URI then it's scheme must be "mysql".
-  #   If conninfo is Hash then valid keys are :host, :user, :password, :db, :port, :socket and :flag.
-  # opt :: [Hash] options.
-  # === Options
-  # :connect_timeout :: [Numeric] The number of seconds before connection timeout.
-  # :init_command    :: [String] Statement to execute when connecting to the MySQL server.
-  # :charset         :: [String / Mysql::Charset] The character set to use as the default character set.
-  # :read_timeout    :: [The timeout in seconds for attempts to read from the server.
-  # :write_timeout   :: [Numeric] The timeout in seconds for attempts to write to the server.
-  # :found_rows      :: [Boolean] Return the number of found (matched) rows, not the number of changed rows.
-  # :ignore_space    :: [Boolean] Allow spaces after function names.
-  # :interactive     :: [Boolean] Allow `interactive_timeout' seconds (instead of `wait_timeout' seconds) of inactivity before closing the connection.
-  # :local_files     :: [Boolean] Enable `LOAD DATA LOCAL' handling.
-  # :no_schema       :: [Boolean] Don't allow the DB_NAME.TBL_NAME.COL_NAME syntax.
-  # === Block parameter
-  # my :: [ Mysql ]
-  def initialize(*args)
+  # host   :: hostname mysqld running
+  # user   :: username to connect to mysqld
+  # passwd :: password to connect to mysqld
+  # db     :: initial database name
+  # port   :: port number
+  # socket :: socket file name (only used if host is 'localhost')
+  # flag   :: connection flag. Mysql::CLIENT_* ORed
+  def initialize(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
     @fields = nil
     @protocol = nil
     @charset = nil
@@ -131,39 +131,41 @@ class Mysql
     @affected_rows = nil
     @server_version = nil
     @sqlstate = "00000"
-    @param, opt = conninfo(*args)
     @connected = false
-    set_option opt
+    connect host, user, passwd, db, port, socket, flag
   end
 
-  # :call-seq:
-  # connect(conninfo, opt={})
+  # Connect to mysqld.
   #
-  # connect to mysql server.
-  # arguments are same as new().
-  def connect(*args)
-    param, opt = conninfo(*args)
-    set_option opt
-    param = @param.merge param
-    @protocol = Protocol.new param[:host], param[:port], param[:socket], @connect_timeout, @read_timeout, @write_timeout
+  # === Argument
+  # host   :: hostname mysqld running
+  # user   :: username to connect to mysqld
+  # passwd :: password to connect to mysqld
+  # db     :: initial database name
+  # port   :: port number
+  # socket :: socket file name (only used if host is 'localhost')
+  # flag   :: connection flag. one or more Mysql::CLIENT_* flags.
+  def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
+    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
     @protocol.synchronize do
       init_packet = @protocol.read_initial_packet
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
       client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
-      client_flags |= CLIENT_CONNECT_WITH_DB if param[:db]
-      client_flags |= param[:flag] if param[:flag]
+      client_flags |= CLIENT_CONNECT_WITH_DB if db
+      client_flags |= flag if flag
       unless @charset
         @charset = Charset.by_number(init_packet.server_charset)
         @charset.encoding       # raise error if unsupported charset
       end
-      netpw = init_packet.crypt_password param[:password]
-      auth_packet = Protocol::AuthenticationPacket.new client_flags, 1024**3, @charset.number, param[:user], netpw, param[:db]
+      netpw = init_packet.crypt_password passwd
+      auth_packet = Protocol::AuthenticationPacket.new client_flags, 1024**3, @charset.number, user, netpw, db
       @protocol.send_packet auth_packet
       @protocol.read            # skip OK packet
     end
     simple_query @init_command if @init_command
     return self
   end
+  alias real_connect connect
 
   # disconnect from mysql.
   def close
@@ -176,6 +178,32 @@ class Mysql
       end
     end
     return self
+  end
+
+  def options(opt, value=nil)
+    case opt
+    when Mysql::INIT_COMMAND
+      @init_command = value
+#    when Mysql::OPT_COMPRESS
+    when Mysql::OPT_CONNECT_TIMEOUT
+      @connect_timeout = value
+#    when Mysql::GUESS_CONNECTION
+#    when Mysql::OPT_LOCAL_INFILE
+#    when Mysql::OPT_NAMED_PIPE
+#    when Mysql::OPT_PROTOCOL
+    when Mysql::OPT_READ_TIMEOUT
+      @read_timeout = value
+    when Mysql::OPT_WRITE_TIMEOUT
+      @write_timeout = value
+#    when Mysql::READ_DEFAULT_FILE
+#    when Mysql::READ_DEFAULT_GROUP
+#    when Mysql::SECURE_AUTH
+#    when Mysql::SET_CHARSET_DIR
+#    when Mysql::SET_CHARSET_NAME
+#    when Mysql::SET_CLIENT_IP
+#    when Mysql::SHARED_MEMORY_BASE_NAME
+    end
+    self
   end
 
   # set characterset of MySQL connection
@@ -432,6 +460,7 @@ class Mysql
   class Field
     attr_reader :db, :table, :org_table, :name, :org_name, :charsetnr, :length, :type, :flags, :decimals, :default
     alias :def :default
+    attr_accessor :max_length
 
     # === Argument
     # packet :: [Protocol::FieldPacket]
@@ -439,6 +468,23 @@ class Mysql
       @db, @table, @org_table, @name, @org_name, @charsetnr, @length, @type, @flags, @decimals, @default =
         packet.db, packet.table, packet.org_table, packet.name, packet.org_name, packet.charsetnr, packet.length, packet.type, packet.flags, packet.decimals, packet.default
       @flags |= NUM_FLAG if is_num_type?
+    end
+
+    def hash
+      {
+        "name"       => @name,
+        "table"      => @table,
+        "def"        => @default,
+        "type"       => @type,
+        "length"     => @length,
+        "max_length" => @max_length,
+        "flags"      => @flags,
+        "decimals"   => @decimals
+      }
+    end
+
+    def inspect
+      "#<Mysql::Field:#{@name}>"
     end
 
     # Return true if numeric field.
@@ -475,6 +521,7 @@ class Mysql
       @fieldname_with_table = nil
       @index = 0
       @records = recv_all_records mysql.protocol, fields, mysql.charset
+      @field_index = 0
     end
 
     def size
@@ -482,9 +529,11 @@ class Mysql
     end
 
     def fetch_row
+      @fetched_record = nil
       return nil if @index >= @records.size
       rec = @records[@index]
       @index += 1
+      @fetched_record = rec
       return rec
     end
 
@@ -519,6 +568,57 @@ class Mysql
       end
       self
     end
+
+    def num_rows
+      @records.size
+    end
+
+    def data_seek(n)
+      @index = n
+    end
+
+    def row_tell
+      @index
+    end
+
+    def row_seek(n)
+      ret = @index
+      @index = n
+      ret
+    end
+
+    def fetch_field
+      return nil if @field_index >= @fields.length
+      ret = @fields[@field_index]
+      @field_index += 1
+      ret
+    end
+
+    def field_tell
+      @field_index
+    end
+
+    def field_seek(n)
+      @field_index = n
+    end
+
+    def fetch_field_direct(n)
+      raise ClientError, "invalid argument: #{n}" if n < 0 or n >= @fields.length
+      @fields[n]
+    end
+
+    def fetch_fields
+      @fields
+    end
+
+    def fetch_lengths
+      return nil unless @fetched_record
+      @fetched_record.map{|c|c.nil? ? 0 : c.length}
+    end
+
+    def num_fields
+      @fields.size
+    end
   end
 
   # Result set for simple query
@@ -533,63 +633,12 @@ class Mysql
         break if Protocol.eof_packet? data
         rec = fields.map do |f|
           v = Protocol.lcs2str! data
-          convert_str_to_ruby_value f, v, charset
+          f.max_length = [v ? v.length : 0, f.max_length || 0].max
+          v
         end
         ret.push rec
       end
       ret
-    end
-
-    MYSQL_RUBY_TYPE = {
-      Field::TYPE_BIT         => :binary,
-      Field::TYPE_DECIMAL     => :string,
-      Field::TYPE_VARCHAR     => :string,
-      Field::TYPE_NEWDECIMAL  => :string,
-      Field::TYPE_TINY_BLOB   => :string,
-      Field::TYPE_MEDIUM_BLOB => :string,
-      Field::TYPE_LONG_BLOB   => :string,
-      Field::TYPE_BLOB        => :string,
-      Field::TYPE_VAR_STRING  => :string,
-      Field::TYPE_STRING      => :string,
-      Field::TYPE_TINY        => :integer,
-      Field::TYPE_SHORT       => :integer,
-      Field::TYPE_LONG        => :integer,
-      Field::TYPE_LONGLONG    => :integer,
-      Field::TYPE_INT24       => :integer,
-      Field::TYPE_YEAR        => :integer,
-      Field::TYPE_FLOAT       => :float,
-      Field::TYPE_DOUBLE      => :float,
-      Field::TYPE_TIMESTAMP   => :datetime,
-      Field::TYPE_DATE        => :datetime,
-      Field::TYPE_DATETIME    => :datetime,
-      Field::TYPE_NEWDATE     => :datetime,
-      Field::TYPE_TIME        => :time,
-    }
-
-    def convert_str_to_ruby_value(field, value, charset)
-      return nil if value.nil?
-      case MYSQL_RUBY_TYPE[field.type]
-      when :binary
-        Charset.to_binary(value)
-      when :string
-        field.flags & Field::BINARY_FLAG == 0 ? charset.force_encoding(value) : Charset.to_binary(value)
-      when :integer
-        value.to_i
-      when :float
-        value.to_f
-      when :datetime
-        unless value =~ /\A(\d\d\d\d).(\d\d).(\d\d)(?:.(\d\d).(\d\d).(\d\d))?\z/
-          raise "unsupported format date type: #{value}"
-        end
-        Time.new($1, $2, $3, $4, $5, $6)
-      when :time
-        unless value =~ /\A(-?)(\d+).(\d\d).(\d\d)?\z/
-          raise "unsupported format time type: #{value}"
-        end
-        Time.new(0, 0, 0, $2, $3, $4, $1=="-")
-      else
-        raise "unknown mysql type: #{field.type}"
-      end
     end
   end
 
