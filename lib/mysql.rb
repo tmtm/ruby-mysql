@@ -282,24 +282,14 @@ class Mysql
   end
 
   # Parse prepared-statement.
-  # If block is specified then prepared-statement is closed when exiting the block.
   # === Argument
   # str   :: [String] query string
-  # block :: If it is given then it is evaluated with Mysql::Statement object as argument.
   # === Return
   # Mysql::Statement :: Prepared-statement object
-  # The block value if block is given.
-  def prepare(str, &block)
-    st = Statement.new self
+  def prepare(str)
+    st = Stmt.new self
     st.prepare str
-    if block
-      begin
-        return block.call(st)
-      ensure
-        st.close
-      end
-    end
-    return st
+    st
   end
 
   # Escape special character in MySQL.
@@ -319,27 +309,11 @@ class Mysql
   end
   alias quote escape_string
 
-  # :call-seq:
-  # statement()
-  # statement() {|st| ... }
-  #
   # Make empty prepared-statement object.
-  # If block is specified then prepared-statement is closed when exiting the block.
-  # === Block parameter
-  # st :: [ Mysql::Stmt ] Prepared-statement object.
   # === Return
-  # Mysql::Statement :: If block is not specified.
-  # The value returned by block :: If block is specified.
-  def statement(&block)
-    st = Statement.new self
-    if block
-      begin
-        return block.call(st)
-      ensure
-        st.close
-      end
-    end
-    return st
+  # Mysql::Stmt :: If block is not specified.
+  def stmt_init
+    Stmt.new self
   end
 
   # Get field(column) list
@@ -679,7 +653,9 @@ class Mysql
   end
 
   # Prepared statement
-  class Statement
+  class Stmt
+    include Enumerable
+
     attr_reader :affected_rows, :insert_id, :server_status, :warning_count
     attr_reader :param_count, :fields, :sqlstate
 
@@ -756,11 +732,13 @@ class Mysql
           if res_packet.field_count == 0
             @affected_rows, @insert_id, @server_status, @warning_conut =
               res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
-            return nil
+            @result = nil
+            return self
           end
           @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
           @protocol.read_eof_packet
-          return StatementResult.new(@mysql, @fields)
+          @result = StatementResult.new(@mysql, @fields)
+          return self
         rescue ServerError => e
           @sqlstate = e.sqlstate
           raise
@@ -777,6 +755,113 @@ class Mysql
           @statement_id = nil
         end
       end
+    end
+
+    def fetch
+      row = @result.fetch_row
+      return row if @bind_result.nil?
+      row.enum_for(:each_with_index).map do |col, i|
+        if col.nil?
+          nil
+        elsif [Numeric, Integer, Fixnum].include? @bind_result[i]
+          col.to_i
+        elsif @bind_result[i] == String
+          col.to_s
+        elsif @bind_result[i] == Float && !col.is_a?(Float)
+          col.to_i.to_f
+        elsif @bind_result[i] == Mysql::Time && !col.is_a?(Mysql::Time)
+          if col.to_s =~ /\A\d+\z/
+            i = col.to_s.to_i
+            if i < 100000000
+              y = i/10000
+              m = i/100%100
+              d = i%100
+              h, mm, s = 0
+            else
+              y = i/10000000000
+              m = i/100000000%100
+              d = i/1000000%100
+              h = i/10000%100
+              mm= i/100%100
+              s = i%100
+            end
+            if y < 70
+              y += 2000
+            elsif y < 100
+              y += 1900
+            end
+            Mysql::Time.new(y, m, d, h, mm, s)
+          else
+            Mysql::Time.new
+          end
+        else
+          col
+        end
+      end
+    end
+
+    def fetch_hash
+      @result.fetch_hash
+    end
+
+    def bind_result(*args)
+      if @fields.length != args.length
+        raise ClientError, "bind_result: result value count(#{@fields.length}) != number of argument(#{args.length})"
+      end
+      args.each do |a|
+        raise TypeError unless [Numeric, Fixnum, Integer, Float, String, Mysql::Time, nil].include? a
+      end
+      @bind_result = args
+      self
+    end
+
+    def each(&block)
+      return enum_for(:each) unless block
+      while rec = fetch
+        block.call rec
+      end
+      self
+    end
+
+    def each_hash(with_table=nil, &block)
+      return enum_for(:each_hash, with_table) unless block
+      while rec = fetch_hash(with_table)
+        block.call rec
+      end
+      self
+    end
+
+    def num_rows
+      @result.num_rows
+    end
+
+    def data_seek(n)
+      @result.data_seek(n)
+    end
+
+    def row_tell
+      @result.row_tell
+    end
+
+    def row_seek(n)
+      @result.row_seek(n)
+    end
+
+    def field_count
+      @fields.length
+    end
+
+    def free_result
+      # do nothing
+    end
+
+    def result_metadata
+      return nil if @fields.empty?
+      res = Result.allocate
+      res.instance_variable_set :@mysql, @mysql
+      res.instance_variable_set :@fields, @fields
+      res.instance_variable_set :@records, []
+      res
     end
   end
 
@@ -808,6 +893,10 @@ class Mysql
       else
         sprintf "%04d-%02d-%02d %02d:%02d:%02d", year, mon, day, hour, min, sec
       end
+    end
+
+    def to_i
+      sprintf("%04d%02d%02d%02d%02d%02d", year, mon, day, hour, min, sec).to_i
     end
 
   end

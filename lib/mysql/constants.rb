@@ -156,7 +156,7 @@ class Mysql
     BINCMP_FLAG         = 131072
   end
 
-  class Statement
+  class Stmt
     # Cursor type
     CURSOR_TYPE_NO_CURSOR = 0
     CURSOR_TYPE_READ_ONLY = 1
