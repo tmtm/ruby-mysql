@@ -69,6 +69,9 @@ class Mysql
   attr_reader :protocol              #
   attr_reader :sqlstate
 
+  attr_accessor :query_with_result
+  attr_accessor :reconnect
+
   class << self
     def init
       my = self.allocate
@@ -84,6 +87,8 @@ class Mysql
         @server_version = nil
         @sqlstate = "00000"
         @connected = false
+        @query_with_result = true
+        @reconnect = false
       end
       my
     end
@@ -132,6 +137,8 @@ class Mysql
     @server_version = nil
     @sqlstate = "00000"
     @connected = false
+    @query_with_result = true
+    @reconnect = false
     connect host, user, passwd, db, port, socket, flag
   end
 
@@ -162,7 +169,7 @@ class Mysql
       @protocol.send_packet auth_packet
       @protocol.read            # skip OK packet
     end
-    simple_query @init_command if @init_command
+    query @init_command if @init_command
     return self
   end
   alias real_connect connect
@@ -219,10 +226,8 @@ class Mysql
   end
 
   # Execute query string.
-  # If params is specified, then the query is executed as prepared-statement automatically.
   # === Argument
   # str :: [String] Query.
-  # params :: Parameters corresponding to place holder (`?') in str.
   # block :: If it is given then it is evaluated with Result object as argument.
   # === Return
   # Mysql::Result :: If result set exist.
@@ -232,20 +237,20 @@ class Mysql
   # [ Mysql::Result ]
   # === Example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
-  def query(str, *params, &block)
-    if params.empty?
-      res = simple_query(str, &block)
-    else
-      res = prepare_query(str, *params, &block)
+  def query(str, &block)
+    unless block
+      ret = simple_query str, @query_with_result
+      return @query_with_result ? ret : self
     end
-    if res && block
-      yield res
-      return self
+    simple_query str, false
+    while true
+      block.call store_result
+      break unless next_result
     end
-    return res
+    self
   end
 
-  def simple_query(str)  # :nodoc:
+  def simple_query(str, query_with_result)  # :nodoc:
     @affected_rows = @insert_id = @server_status = @warning_count = 0
     @protocol.synchronize do
       begin
@@ -256,10 +261,13 @@ class Mysql
           @affected_rows, @insert_id, @server_status, @warning_conut =
             res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
           return nil
-        else
-          @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
-          @protocol.read_eof_packet
-          return SimpleQueryResult.new self, @fields
+        end
+        @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
+        @protocol.read_eof_packet
+        if query_with_result
+          res = SimpleQueryResult.new self, @fields
+          @server_status = res.server_status
+          return res
         end
       rescue ServerError => e
         @sqlstate = e.sqlstate
@@ -268,17 +276,37 @@ class Mysql
     end
   end
 
-  def prepare_query(str, *params)  # :nodoc:
-    st = prepare(str)
-    res = st.execute(*params)
-    if st.fields.empty?
-      @affected_rows = st.affected_rows
-      @insert_id = st.insert_id
-      @server_status = st.server_status
-      @warning_count = st.warning_count
+  def store_result
+    res = SimpleQueryResult.new self, @fields
+    @server_status = res.server_status
+    res
+  end
+
+  def set_server_option(opt)
+    @protocol.synchronize do
+      @protocol.reset
+      @protocol.send_packet Protocol::SetOptionPacket.new(opt)
+      @protocol.read_eof_packet
     end
-    st.close
-    return res
+    self
+  end
+
+  def more_results
+    @server_status & SERVER_MORE_RESULTS_EXISTS != 0
+  end
+  alias more_results? more_results
+
+  def next_result
+    return false unless more_results
+    res_packet = @protocol.read_result_packet
+    if res_packet.field_count == 0
+      @affected_rows, @insert_id, @server_status, @warning_conut =
+        res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
+    else
+      @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
+      @protocol.read_eof_packet
+    end
+    return true
   end
 
   # Parse prepared-statement.
@@ -336,6 +364,11 @@ class Mysql
         raise
       end
     end
+  end
+
+  def autocommit(flag)
+    query "set autocommit=#{flag ? 1 : 0}"
+    self
   end
 
   private
@@ -598,6 +631,8 @@ class Mysql
   # Result set for simple query
   class SimpleQueryResult < Result
 
+    attr_reader :server_status
+
     private
 
     def recv_all_records(protocol, fields, charset)
@@ -612,6 +647,7 @@ class Mysql
         end
         ret.push rec
       end
+      @server_status = data[3]
       ret
     end
   end

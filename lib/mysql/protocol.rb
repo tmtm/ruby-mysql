@@ -43,10 +43,10 @@ class Mysql
         return lcb.slice!(0,2).unpack("v").first
       when ?\xfd
         c, v = lcb.slice!(0,3).unpack("Cv")
-        return (v<<8)+c
+        return (v << 8)+c
       when ?\xfe
         v1, v2 = lcb.slice!(0,8).unpack("VV")
-        return (v2<<32)+v1
+        return (v2 << 32)+v1
       else
         return v.ord
       end
@@ -88,7 +88,7 @@ class Mysql
         return unsigned ? v : v < 2**32/2 ? v : v-2**32
       when Field::TYPE_LONGLONG
         n1, n2 = data.slice!(0,8).unpack("VV")
-        v = (n2<<32) | n1
+        v = (n2 << 32) | n1
         return unsigned ? v : v < 2**64/2 ? v : v-2**64
       when Field::TYPE_FLOAT
         return data.slice!(0,4).unpack("e").first
@@ -174,6 +174,7 @@ class Mysql
     end
 
     attr_reader :sqlstate
+    attr_accessor :reconnect
 
     # make socket connection to server.
     # === Argument
@@ -201,6 +202,8 @@ class Mysql
       @write_timeout = write_timeout
       @seq = 0                # packet counter. reset by each command
       @mutex = Mutex.new
+      @reconnect = false
+      @conninfo = [host, port, socket, conn_timeout]  # for auto reconnection
     end
 
     def close
@@ -274,6 +277,11 @@ class Mysql
         Timeout.timeout @write_timeout do
           @sock.flush
         end
+      rescue Errno::EPIPE
+        raise unless @reconnect
+        arg = @conninfo + [@read_timeout, @write_timeout]
+        initialize *arg
+        retry
       rescue Timeout::Error
         raise ClientError, "write timeout"
       end
@@ -502,7 +510,7 @@ class Mysql
       # If values is [1, nil, 2, 3, nil] then returns "\x12"(0b10010).
       def null_bitmap(values)
         bitmap = values.enum_for(:each_slice,8).map do |vals|
-          vals.reverse.inject(0){|b, v|(b<<1 | (v ? 0 : 1))}
+          vals.reverse.inject(0){|b, v|(b << 1 | (v ? 0 : 1))}
         end
         return bitmap.pack("C*")
       end
@@ -546,5 +554,16 @@ class Mysql
         [Mysql::COM_FIELD_LIST, "#{@table}\0#{@field}"].pack("Ca*")
       end
     end
+
+    class SetOptionPacket < TxPacket
+      def initialize(*args)
+        @option, = args
+      end
+
+      def serialize
+        [Mysql::COM_SET_OPTION, @option].pack("Cv")
+      end
+    end
+
   end
 end

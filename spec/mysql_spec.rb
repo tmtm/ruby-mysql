@@ -135,32 +135,85 @@ describe 'Mysql' do
   end
 
   describe '#autocommit' do
-    it 'change auto-commit mode'
+    it 'change auto-commit mode' do
+      @m.autocommit(true).should == @m
+      @m.query('select @@autocommit').fetch_row.should == ['1']
+      @m.autocommit(false).should == @m
+      @m.query('select @@autocommit').fetch_row.should == ['0']
+    end
   end
 
-  describe '#more_results, #next_result' do
-    it ''
-  end
-
-  describe '#query with block' do
-    it ''
-  end
-
-  describe '#set_server_optoin' do
-    it ''
-  end
-
-  describe '#sqlstate' do
-    it ''
-  end
-
-  describe '#query_with_result' do
-    it ''
+  describe '#query_with_result=false' do
+    it 'Mysql#query returns self and Mysql#store_result returns result set' do
+      @m.query_with_result = false
+      @m.query('select 1,2,3').should == @m
+      res = @m.store_result
+      res.fetch_row.should == ['1','2','3']
+    end
   end
 
   describe '#reconnect' do
-    it ''
+    it 'default values is false' do
+      @m.reconnect.should == false
+    end
+    it 'can set value' do
+      (@m.reconnect = true).should == true
+      @m.reconnect.should == true
+      (@m.reconnect = false).should == false
+      @m.reconnect.should == false
+    end
   end
+
+  it 'multi statement query' do
+    @m.query_with_result = false
+    @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
+    @m.query 'select 1,2,3; select 4,5,6'
+    res = @m.store_result
+    res.fetch_row.should == ['1','2','3']
+    res.fetch_row.should == nil
+    @m.more_results.should == true
+    @m.more_results?.should == true
+    @m.next_result.should == true
+    res = @m.store_result
+    res.fetch_row.should == ['4','5','6']
+    @m.more_results.should == false
+    @m.more_results?.should == false
+    @m.next_result.should == false
+  end
+
+  describe '#query with block' do
+    it 'returns self' do
+      @m.query('select 1'){}.should == @m
+    end
+    it 'evaluate block with Mysql::Result' do
+      @m.query('select 1'){|res| res.should be_kind_of Mysql::Result}.should == @m
+    end
+    it 'evaluate block multiple times if multiple query' do
+      @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
+      cnt = 0
+      expect = [["1"], ["2"]]
+      @m.query('select 1; select 2'){|res|
+        res.fetch_row.should == expect.shift
+        cnt += 1
+      }.should == @m
+      cnt.should == 2
+    end
+  end
+
+  describe '#set_server_option' do
+    it 'returns self' do
+      @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON).should == @m
+    end
+  end
+
+  describe '#sqlstate' do
+    it 'returns sqlstate code' do
+      @m.sqlstate.should == "00000"
+      proc{@m.query("hoge")}.should raise_error
+      @m.sqlstate.should == "42000"
+    end
+  end
+
 end
 
 describe 'Mysql::Result' do
