@@ -1092,7 +1092,19 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [["\x00"], ["\xff"], ["\x7f"], ["\xff"], ["\xff"], ["\xff"], ["\xff"]]
+    if defined? Encoding
+      @s.entries.should == [
+        ["\x00".force_encoding('ASCII-8BIT')],
+        ["\xff".force_encoding('ASCII-8BIT')],
+        ["\x7f".force_encoding('ASCII-8BIT')],
+        ["\xff".force_encoding('ASCII-8BIT')],
+        ["\xff".force_encoding('ASCII-8BIT')],
+        ["\xff".force_encoding('ASCII-8BIT')],
+        ["\xff".force_encoding('ASCII-8BIT')],
+      ]
+    else
+      @s.entries.should == [["\x00"], ["\xff"], ["\x7f"], ["\xff"], ["\xff"], ["\xff"], ["\xff"]]
+    end
   end
 
   it '#fetch bit column (64bit)' do
@@ -1100,13 +1112,23 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(4294967296),(18446744073709551615),(18446744073709551616)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [
-      ["\x00\x00\x00\x00\x00\x00\x00\x00"],
-      ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-      ["\x00\x00\x00\x01\x00\x00\x00\x00"],
-      ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-      ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-    ]
+    if defined? Encoding
+      @s.entries.should == [
+        ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
+        ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+        ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
+        ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+        ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+      ]
+    else
+      @s.entries.should == [
+        ["\x00\x00\x00\x00\x00\x00\x00\x00"],
+        ["\xff\xff\xff\xff\xff\xff\xff\xff"],
+        ["\x00\x00\x00\x01\x00\x00\x00\x00"],
+        ["\xff\xff\xff\xff\xff\xff\xff\xff"],
+        ["\xff\xff\xff\xff\xff\xff\xff\xff"],
+      ]
+    end
   end
 
   it '#fetch tinyint column' do

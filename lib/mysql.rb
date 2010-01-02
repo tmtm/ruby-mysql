@@ -891,7 +891,7 @@ class Mysql
         end
         ret.push rec
       end
-      @server_status = data[3]
+      @server_status = data[3].ord
       ret
     end
   end
