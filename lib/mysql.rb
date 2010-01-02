@@ -1,4 +1,4 @@
-# Copyright (C) 2008-2009 TOMITA Masahiro
+# Copyright (C) 2008-2010 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 require "enumerator"
@@ -24,78 +24,37 @@ class Mysql
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
-  OPTIONS = {
-    :connect_timeout         => Integer,
-#    :compress                => x,
-#    :named_pipe              => x,
-    :init_command            => String,
-#    :read_default_file       => x,
-#    :read_default_group      => x,
-    :charset                 => Object,
-#    :local_infile            => x,
-#    :shared_memory_base_name => x,
-    :read_timeout            => Integer,
-    :write_timeout           => Integer,
-#    :use_result              => x,
-#    :use_remote_connection   => x,
-#    :use_embedded_connection => x,
-#    :guess_connection        => x,
-#    :client_ip               => x,
-#    :secure_auth             => x,
-#    :report_data_truncation  => x,
-#    :reconnect               => x,
-#    :ssl_verify_server_cert  => x,
-  }  # :nodoc:
-
-  OPT2FLAG = {
-#    :compress                => CLIENT_COMPRESS,
-    :found_rows              => CLIENT_FOUND_ROWS,
-    :ignore_sigpipe          => CLIENT_IGNORE_SIGPIPE,
-    :ignore_space            => CLIENT_IGNORE_SPACE,
-    :interactive             => CLIENT_INTERACTIVE,
-    :local_files             => CLIENT_LOCAL_FILES,
-#    :multi_results           => CLIENT_MULTI_RESULTS,
-#    :multi_statements        => CLIENT_MULTI_STATEMENTS,
-    :no_schema               => CLIENT_NO_SCHEMA,
-#    :ssl                     => CLIENT_SSL,
-  }  # :nodoc:
-
   attr_reader :charset               # character set of MySQL connection
   attr_reader :affected_rows         # number of affected records by insert/update/delete.
-  attr_reader :insert_id             # latest auto_increment value.
   attr_reader :server_status         # :nodoc:
-  attr_reader :warning_count         #
-  attr_reader :server_version        #
-  attr_reader :protocol              #
-  attr_reader :sqlstate
+  attr_reader :warning_count         # number of warnings for previous query
+  attr_reader :protocol              # :nodoc:
+  attr_reader :sqlstate              # sqlstate for latest query
 
   attr_accessor :query_with_result
   attr_accessor :reconnect
 
   class << self
+    # Make Mysql object without connecting.
     def init
       my = self.allocate
-      my.instance_eval do
-        @fields = nil
-        @protocol = nil
-        @charset = nil
-        @connect_timeout = nil
-        @read_timeout = nil
-        @write_timeout = nil
-        @init_command = nil
-        @affected_rows = nil
-        @server_version = nil
-        @sqlstate = "00000"
-        @connected = false
-        @query_with_result = true
-        @reconnect = false
-      end
+      my.instance_eval{initialize}
       my
+    end
+
+    # Make Mysql object and connect to mysqld.
+    # Arguments are same as Mysql#connect.
+    def new(*args)
+      my = self.init
+      my.connect *args
     end
 
     alias real_connect new
     alias connect new
 
+    # Escape special character in string.
+    # === Argument
+    # str :: [String]
     def escape_string(str)
       str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
         case s
@@ -109,23 +68,22 @@ class Mysql
     end
     alias quote escape_string
 
-    def get_client_info
-      "2.9.0"
+    # Return client version as String.
+    # This value is dummy.
+    def client_info
+      "5.0.0"
     end
-    alias client_info get_client_info
+    alias get_client_info client_info
+
+    # Return client version as Integer
+    # This value is dummy. If you want to get version of this library, use Mysql::VERSION.
+    def client_version
+      50000
+    end
+    alias get_client_version client_version
   end
 
-  # Connect to mysqld.
-  #
-  # === Argument
-  # host   :: hostname mysqld running
-  # user   :: username to connect to mysqld
-  # passwd :: password to connect to mysqld
-  # db     :: initial database name
-  # port   :: port number
-  # socket :: socket file name (only used if host is 'localhost')
-  # flag   :: connection flag. Mysql::CLIENT_* ORed
-  def initialize(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
+  def initialize  # :nodoc:
     @fields = nil
     @protocol = nil
     @charset = nil
@@ -134,32 +92,42 @@ class Mysql
     @write_timeout = nil
     @init_command = nil
     @affected_rows = nil
+    @warning_count = 0
     @server_version = nil
     @sqlstate = "00000"
     @connected = false
     @query_with_result = true
     @reconnect = false
-    connect host, user, passwd, db, port, socket, flag
+    @host_info = nil
+    @info = nil
+    @last_error = nil
+    @thread_id = nil
+    @result_exist = false
+    @local_infile = nil
   end
 
   # Connect to mysqld.
-  #
   # === Argument
-  # host   :: hostname mysqld running
-  # user   :: username to connect to mysqld
-  # passwd :: password to connect to mysqld
-  # db     :: initial database name
-  # port   :: port number
-  # socket :: socket file name (only used if host is 'localhost')
-  # flag   :: connection flag. one or more Mysql::CLIENT_* flags.
+  # host   :: [String] hostname mysqld running
+  # user   :: [String] username to connect to mysqld
+  # passwd :: [String] password to connect to mysqld
+  # db     :: [String] initial database name
+  # port   :: [Integer] port number (used if host is not 'localhost' or nil)
+  # socket :: [String] socket file name (used if host is 'localhost' or nil)
+  # flag   :: [Integer] connection flag. Mysql::CLIENT_* ORed
+  # === Return
+  # self
   def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
     @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
     @protocol.synchronize do
       init_packet = @protocol.read_initial_packet
+      @server_info = init_packet.server_version
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+      @thread_id = init_packet.thread_id
       client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
       client_flags |= CLIENT_CONNECT_WITH_DB if db
       client_flags |= flag if flag
+      client_flags |= CLIENT_LOCAL_FILES if @local_infile
       unless @charset
         @charset = Charset.by_number(init_packet.server_charset)
         @charset.encoding       # raise error if unsupported charset
@@ -169,12 +137,13 @@ class Mysql
       @protocol.send_packet auth_packet
       @protocol.read            # skip OK packet
     end
+    @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
     query @init_command if @init_command
     return self
   end
   alias real_connect connect
 
-  # disconnect from mysql.
+  # Disconnect from mysql.
   def close
     if @protocol
       @protocol.synchronize do
@@ -187,33 +156,80 @@ class Mysql
     return self
   end
 
+  # Set option for connection.
+  #
+  # Available options:
+  #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_READ_TIMEOUT,
+  #   Mysql::OPT_RECONNECT, Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
+  # === Argument
+  # opt   :: [Integer] option
+  # value :: option value that is depend on opt
+  # === Return
+  # self
   def options(opt, value=nil)
     case opt
     when Mysql::INIT_COMMAND
-      @init_command = value
+      @init_command = value.to_s
 #    when Mysql::OPT_COMPRESS
     when Mysql::OPT_CONNECT_TIMEOUT
       @connect_timeout = value
 #    when Mysql::GUESS_CONNECTION
-#    when Mysql::OPT_LOCAL_INFILE
+    when Mysql::OPT_LOCAL_INFILE
+      @local_infile = value
 #    when Mysql::OPT_NAMED_PIPE
 #    when Mysql::OPT_PROTOCOL
     when Mysql::OPT_READ_TIMEOUT
-      @read_timeout = value
+      @read_timeout = value.to_i
+    when Mysql::OPT_RECONNECT
+      @reconnect = value
+#    when Mysql::SET_CLIENT_IP
+#    when Mysql::OPT_SSL_VERIFY_SERVER_CERT
+#    when Mysql::OPT_USE_EMBEDDED_CONNECTION
+#    when Mysql::OPT_USE_REMOTE_CONNECTION
     when Mysql::OPT_WRITE_TIMEOUT
-      @write_timeout = value
+      @write_timeout = value.to_i
 #    when Mysql::READ_DEFAULT_FILE
 #    when Mysql::READ_DEFAULT_GROUP
+#    when Mysql::REPORT_DATA_TRUNCATION
 #    when Mysql::SECURE_AUTH
 #    when Mysql::SET_CHARSET_DIR
-#    when Mysql::SET_CHARSET_NAME
-#    when Mysql::SET_CLIENT_IP
+    when Mysql::SET_CHARSET_NAME
+      @charset = Charset.by_name value.to_s
 #    when Mysql::SHARED_MEMORY_BASE_NAME
+    else
+      warn "option not implemented: #{opt}"
     end
     self
   end
 
-  # set characterset of MySQL connection
+  # Escape special character in MySQL.
+  # === Note
+  # In Ruby 1.8, this is not safe for multibyte charset such as 'SJIS'.
+  # You should use place-holder in prepared-statement.
+  def escape_string(str)
+    str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
+      case s
+      when "\0" then "\\0"
+      when "\n" then "\\n"
+      when "\r" then "\\r"
+      when "\x1a" then "\\Z"
+      else "\\#{s}"
+      end
+    end
+  end
+  alias quote escape_string
+
+  def client_info
+    self.class.client_info
+  end
+  alias get_client_info client_info
+
+  def client_version
+    self.class.client_version
+  end
+  alias get_client_version client_version
+
+  # Set charset of MySQL connection.
   # === Argument
   # cs :: [String / Mysql::Charset]
   # === Return
@@ -223,6 +239,118 @@ class Mysql
     query "SET NAMES #{charset.name}" if @protocol
     @charset = charset
     cs
+  end
+
+  # Return charset name
+  def character_set_name
+    @charset.name
+  end
+
+  # Create database
+  # === Argument
+  # db :: [String] database name
+  # === Return
+  # self
+  def create_db(db)
+    query "create database #{db}"
+    self
+  end
+
+  # Drop database.
+  # === Argument
+  # db :: [String] database name
+  # === Return
+  # self
+  def drop_db(db)
+    query "drop database #{db}"
+    self
+  end
+
+  # Return last error number.
+  # === Return
+  # [Integer]
+  def errno
+    @last_error && @last_error.errno
+  end
+
+  # Return last error message.
+  # === Return
+  # [String]
+  def error
+    @last_error && @last_error.error
+  end
+
+  # Return number of columns for last query.
+  # === Return
+  # [Integer]
+  def field_count
+    @fields.size
+  end
+
+  # Return connection type.
+  # === Return
+  # [String]
+  def host_info
+    @host_info
+  end
+  alias get_host_info host_info
+
+  # Return protocol version.
+  # === Return
+  # [Integer]
+  def proto_info
+    Mysql::Protocol::VERSION
+  end
+  alias get_proto_info proto_info
+
+  # Return server version as String
+  # === Return
+  # [String]
+  def server_info
+    @server_info
+  end
+  alias get_server_info server_info
+
+  # Return server version as Integer
+  def server_version
+    @server_version
+  end
+  alias get_server_version server_version
+
+  # Return information for last query.
+  # === Return
+  # [String]
+  def info
+    @info
+  end
+
+  # Return latest auto_increment value.
+  # === Return
+  # [Integer]
+  def insert_id
+    @insert_id
+  end
+
+  # Kill query.
+  # === Argument
+  # pid :: [Integer] thread id
+  # === Return
+  # self
+  def kill(pid)
+    query "kill #{pid}"
+    self
+  end
+
+  # Return database list.
+  #
+  # NOTE for Ruby 1.8: This is not multi-byte safe. Don't use for
+  # multi-byte charset such as cp932.
+  # === Argument
+  # db :: [String] database name that may contain wild card.
+  # === Return
+  # [Array of String] database list
+  def list_dbs(db=nil)
+    query(db ? "show databases like '#{quote db}'" : "show databases").map(&:first)
   end
 
   # Execute query string.
@@ -244,11 +372,15 @@ class Mysql
     end
     simple_query str, false
     while true
-      block.call store_result
+      if @fields
+        res = store_result
+        block.call res
+      end
       break unless next_result
     end
     self
   end
+  alias real_query query
 
   def simple_query(str, query_with_result)  # :nodoc:
     @affected_rows = @insert_id = @server_status = @warning_count = 0
@@ -258,28 +390,52 @@ class Mysql
         @protocol.send_packet Protocol::QueryPacket.new(@charset.convert(str))
         res_packet = @protocol.read_result_packet
         if res_packet.field_count == 0
-          @affected_rows, @insert_id, @server_status, @warning_conut =
-            res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
+          @affected_rows, @insert_id, @server_status, @warning_count, @info =
+            res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
+          return nil
+        end
+        if res_packet.field_count.nil?   # LOAD DATA LOCAL INFILE
+          filename = res_packet.message
+          @protocol.write File.read(filename)
+          @protocol.write nil  # EOF mark
+          @protocol.read
+          @affected_rows, @insert_id, @server_status, @warning_count, @info =
+            res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
           return nil
         end
         @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
         @protocol.read_eof_packet
-        if query_with_result
-          res = SimpleQueryResult.new self, @fields
-          @server_status = res.server_status
-          return res
-        end
+        @result_exist = true
+        return store_result if query_with_result
       rescue ServerError => e
+        @last_error = e
         @sqlstate = e.sqlstate
         raise
       end
     end
   end
 
+  # Get all data for last query if query_with_result is false.
+  # === Return
+  # [Mysql::Result]
   def store_result
+    raise ClientError, 'invalid usage' unless @result_exist
     res = SimpleQueryResult.new self, @fields
     @server_status = res.server_status
+    @result_exist = false
     res
+  end
+
+  # Returns thread ID.
+  # === Return
+  # [Integer] Thread ID
+  def thread_id
+    @thread_id
+  end
+
+  # Use result of query. The result data is retrieved when you use Mysql::Result#fetch_row
+  def use_result
+    store_result
   end
 
   def set_server_option(opt)
@@ -302,10 +458,12 @@ class Mysql
     if res_packet.field_count == 0
       @affected_rows, @insert_id, @server_status, @warning_conut =
         res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
+      @fields = nil
     else
       @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
       @protocol.read_eof_packet
     end
+    @result_exist = true
     return true
   end
 
@@ -320,23 +478,6 @@ class Mysql
     st
   end
 
-  # Escape special character in MySQL.
-  # === Note
-  # In Ruby 1.8, this is not safe for multibyte charset such as 'SJIS'.
-  # You should use place-holder in prepared-statement.
-  def escape_string(str)
-    str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
-      case s
-      when "\0" then "\\0"
-      when "\n" then "\\n"
-      when "\r" then "\\r"
-      when "\x1a" then "\\Z"
-      else "\\#{s}"
-      end
-    end
-  end
-  alias quote escape_string
-
   # Make empty prepared-statement object.
   # === Return
   # Mysql::Stmt :: If block is not specified.
@@ -344,26 +485,116 @@ class Mysql
     Stmt.new self
   end
 
-  # Get field(column) list
+  # Returns Mysql::Result object that is empty.
+  # Use fetch_fields to get list of fields.
   # === Argument
   # table :: [String] table name.
+  # field :: [String] field name that may contain wild card.
   # === Return
-  # Array of Mysql::Field
-  def list_fields(table)
+  # [Mysql::Result]
+  def list_fields(table, field=nil)
     @protocol.synchronize do
       begin
         @protocol.reset
-        @protocol.send_packet Protocol::FieldListPacket.new(table)
+        @protocol.send_packet Protocol::FieldListPacket.new(table, field)
         fields = []
         until Protocol.eof_packet?(data = @protocol.read)
           fields.push Field.new(Protocol::FieldPacket.parse(data))
         end
-        return fields
+        res = Result.allocate
+        res.instance_variable_set(:@fields, fields)
+        res.instance_variable_set(:@records, [])
+        res.instance_variable_set(:@index, 0)
+        res.instance_variable_set(:@field_index, 0)
+        return res
       rescue ServerError => e
+        @last_error = e
         @sqlstate = e.sqlstate
         raise
       end
     end
+  end
+
+  # Returns Mysql::Result object containing process list.
+  # === Return
+  # [Mysql::Result]
+  def list_processes
+    @protocol.reset
+    @protocol.send_packet Protocol::ProcessInfoPacket.new
+    field_count = Protocol.lcb2int!(@protocol.read)
+    @fields = Array.new(field_count).map{Field.new @protocol.read_field_packet}
+    @protocol.read_eof_packet
+    @result_exist = true
+    store_result
+  end
+
+  # Returns list of table name.
+  #
+  # NOTE for Ruby 1.8: This is not multi-byte safe. Don't use for
+  # multi-byte charset such as cp932.
+  # === Argument
+  # table :: [String] database name that may contain wild card.
+  # === Return
+  # [Array of String]
+  def list_tables(table=nil)
+    query(table ? "show tables like '#{quote table}'" : "show tables").map(&:first)
+  end
+
+  # Check whether the  connection is available.
+  # === Return
+  # self
+  def ping
+    @protocol.reset
+    @protocol.send_packet Protocol::PingPacket.new
+    @protocol.read
+    self
+  end
+
+  # Flush tables or caches.
+  # === Argument
+  # op :: [Integer] operation. Use Mysql::REFRESH_* value.
+  # === Return
+  # self
+  def refresh(op)
+    @protocol.reset
+    @protocol.send_packet Protocol::RefreshPacket.new(op)
+    @protocol.read
+    self
+  end
+
+  # Reload grant tables.
+  # === Return
+  # self
+  def reload
+    refresh Mysql::REFRESH_GRANT
+  end
+
+  # Select default database
+  # === Return
+  # self
+  def select_db(db)
+    query "use #{db}"
+    self
+  end
+
+  def shutdown(level)
+    raise 'not implemented'
+  end
+
+  def stat
+    @protocol.reset
+    @protocol.send_packet Protocol::StatisticsPacket.new
+    @protocol.read
+  end
+
+  def commit
+    query 'commit'
+    self
+  end
+
+  def rollback
+    query 'rollback'
+    self
   end
 
   def autocommit(flag)
@@ -465,9 +696,19 @@ class Mysql
 
   # Field class
   class Field
-    attr_reader :db, :table, :org_table, :name, :org_name, :charsetnr, :length, :type, :flags, :decimals, :default
+    attr_reader :db             # database name
+    attr_reader :table          # table name
+    attr_reader :org_table      # original table name
+    attr_reader :name           # field name
+    attr_reader :org_name       # original field name
+    attr_reader :charsetnr      # charset id number
+    attr_reader :length         # field length
+    attr_reader :type           # field type
+    attr_reader :flags          # flag
+    attr_reader :decimals       # number of decimals
+    attr_reader :default        # defualt value
     alias :def :default
-    attr_accessor :max_length
+    attr_accessor :max_length   # maximum width of the field for the result set
 
     # === Argument
     # packet :: [Protocol::FieldPacket]
@@ -529,6 +770,9 @@ class Mysql
       @index = 0
       @records = recv_all_records mysql.protocol, fields, mysql.charset
       @field_index = 0
+    end
+
+    def free
     end
 
     def size
@@ -742,6 +986,7 @@ class Mysql
           @param_count = res_packet.param_count
           @fields = fields
         rescue ServerError => e
+          @last_error = e
           @sqlstate = e.sqlstate
           raise
         end
@@ -776,6 +1021,7 @@ class Mysql
           @result = StatementResult.new(@mysql, @fields)
           return self
         rescue ServerError => e
+          @last_error = e
           @sqlstate = e.sqlstate
           raise
         end
@@ -933,6 +1179,10 @@ class Mysql
 
     def to_i
       sprintf("%04d%02d%02d%02d%02d%02d", year, mon, day, hour, min, sec).to_i
+    end
+
+    def inspect
+      sprintf "#<#{self.class.name}:%04d-%02d-%02d %02d:%02d:%02d>", year, mon, day, hour, min, sec
     end
 
   end

@@ -261,17 +261,24 @@ class Mysql
 
     # Write one packet data
     # === Argument
-    # data [String / IO] ::
+    # data [String / IO] :: packet data. If data is nil, write empty packet.
     def write(data)
       begin
         @sock.sync = false
-        data = StringIO.new data if data.is_a? String
-        while d = data.read(MAX_PACKET_LENGTH)
+        if data.nil?
           Timeout.timeout @write_timeout do
-            @sock.write [d.length%256, d.length/256, @seq].pack("CvC")
-            @sock.write d
+            @sock.write [0, 0, @seq].pack("CvC")
           end
           @seq = (@seq + 1) % 256
+        else
+          data = StringIO.new data if data.is_a? String
+          while d = data.read(MAX_PACKET_LENGTH)
+            Timeout.timeout @write_timeout do
+              @sock.write [d.length%256, d.length/256, @seq].pack("CvC")
+              @sock.write d
+            end
+            @seq = (@seq + 1) % 256
+          end
         end
         @sock.sync = true
         Timeout.timeout @write_timeout do
@@ -420,7 +427,9 @@ class Mysql
           affected_rows = Protocol.lcb2int! data
           insert_id = Protocol.lcb2int!(data)
           server_status, warning_count, message = data.unpack("vva*")
-          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, message)
+          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, Protocol.lcs2str!(message))
+        elsif field_count.nil?   # LOAD DATA LOCAL INFILE
+          return self.new(nil, nil, nil, nil, nil, data)
         else
           return self.new(field_count)
         end
@@ -546,12 +555,12 @@ class Mysql
     class FieldListPacket < TxPacket
       attr_accessor :table, :field
 
-      def initialize(*args)
-        @table, @field = args
+      def initialize(table, field=nil)
+        @table, @field = table, field
       end
 
       def serialize
-        [Mysql::COM_FIELD_LIST, "#{@table}\0#{@field}"].pack("Ca*")
+        [Mysql::COM_FIELD_LIST, @table, 0, @field].pack("Ca*Ca*")
       end
     end
 
@@ -562,6 +571,72 @@ class Mysql
 
       def serialize
         [Mysql::COM_SET_OPTION, @option].pack("Cv")
+      end
+    end
+
+    class CreateDbPacket < TxPacket
+      def initialize(db)
+        @db = db
+      end
+
+      def serialize
+        [Mysql::COM_CREATE_DB, @db].pack("Ca*")
+      end
+    end
+
+    class DropDbPacket < TxPacket
+      def initialize(db)
+        @db = db
+      end
+
+      def serialize
+        [Mysql::COM_DROP_DB, @db].pack("Ca*")
+      end
+    end
+
+    class RefreshPacket < TxPacket
+      def initialize(opt)
+        @opt = opt
+      end
+
+      def serialize
+        [Mysql::COM_REFRESH, @opt].pack("CC")
+      end
+    end
+
+    class ShutdownPacket < TxPacket
+      def initialize(level)
+        @level = level
+      end
+      def serialize
+        [Mysql::COM_SHUTDOWN, level].pack("CC")
+      end
+    end
+
+    class StatisticsPacket < TxPacket
+      def serialize
+        [Mysql::COM_STATISTICS].pack("C")
+      end
+    end
+
+    class ProcessInfoPacket < TxPacket
+      def serialize
+        [Mysql::COM_PROCESS_INFO].pack("C")
+      end
+    end
+
+    class ProcessKillPacket < TxPacket
+      def initialize(pid)
+        @pid = pid
+      end
+      def serialize
+        [Mysql::COM_PROCESS_KILL, @pid].pack("Cv")
+      end
+    end
+
+    class PingPacket < TxPacket
+      def serialize
+        [Mysql::COM_PING].pack("C")
       end
     end
 

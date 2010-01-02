@@ -1,0 +1,49 @@
+= ruby-mysql
+
+== Description
+
+MySQL connector for Ruby.
+
+== Installation
+
+ ruby setup.rb
+
+=== Gem Installation
+
+ gem install -v 2.9 ruby-mysql
+
+== Features/Problems
+
+* Ruby だけで書かれているのでコンパイル不要です。
+* Ruby 1.9 の M17N に対応しています。
+* MySQL/Ruby 2.8.x とほぼ互換があります。
+
+== Synopsis
+
+使用例:
+
+ my = Mysql.connect('hostname', 'username', 'password', 'dbname')
+ my.query("select col1, col2 from tblname").each do |col1, col2|
+   p col1, col2
+ end
+ stmt = my.prepare('insert into tblname (col1,col2) values (?,?)')
+ stmt.execute 123, 'abc'
+
+== Incompatible with MySQL/Ruby 2.8.x
+
+* いくつかのメソッドがありません:
+  Mysql#debug, Mysql#change_user, Mysql#dump_debug_info, Mysql#ssl_set,
+  Mysql::Stmt#attr_set
+
+* Mysql#options でサポートしているオプションは次のものだけです:
+  Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT,
+  Mysql::OPT_LOCAL_INFILE, Mysql::OPT_READ_TIMEOUT,
+  Mysql::OPT_RECONNECT, Mysql::OPT_WRITE_TIMEOUT,
+  Mysql::SET_CHARSET_NAME. これら以外を指定すると "option not
+  implementted" という warning が標準エラー出力に出力されます。
+
+== Copyright
+
+Author    :: TOMITA Masahiro <tommy@tmtm.org>
+Copyright :: Copyright (c) 2009 TOMITA Masahiro
+License   :: Ruby's

@@ -1,17 +1,25 @@
+# -*- coding: utf-8 -*-
 require "rubygems"
 require "spec"
-require "uri"
+require "tempfile"
 
 require "#{File.dirname __FILE__}/../lib/mysql"
 
+class Mysql::Result
+  include Enumerable
+end
+
+class Mysql::Stmt
+  include Enumerable
+end
+
+# MYSQL_USER must have ALL privilege for MYSQL_DATABASE.* and RELOAD privilege for *.*
 MYSQL_SERVER   = "localhost"
 MYSQL_USER     = "test"
 MYSQL_PASSWORD = "hogehoge"
-MYSQL_DATABASE = "test"
+MYSQL_DATABASE = "test_for_mysql_ruby"
 MYSQL_PORT     = 3306
 MYSQL_SOCKET   = "/var/run/mysqld/mysqld.sock"
-
-URL = "mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}/#{MYSQL_DATABASE}"
 
 describe 'Mysql::VERSION' do
   it 'returns client version' do
@@ -26,32 +34,32 @@ describe 'Mysql.init' do
 end
 
 describe 'Mysql.real_connect' do
-  after do
-    @m.close
-  end
   it 'connect to mysqld' do
     @m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     @m.should be_kind_of Mysql
   end
+  after do
+    @m.close
+  end
 end
 
 describe 'Mysql.connect' do
-  after do
-    @m.close if @m
-  end
   it 'connect to mysqld' do
     @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     @m.should be_kind_of Mysql
   end
-end
-
-describe 'Mysql.new' do
   after do
     @m.close if @m
   end
+end
+
+describe 'Mysql.new' do
   it 'connect to mysqld' do
     @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     @m.should be_kind_of Mysql
+  end
+  after do
+    @m.close if @m
   end
 end
 
@@ -67,15 +75,47 @@ describe 'Mysql.quote' do
   end
 end
 
-describe 'Mysql.get_client_info' do
-  it 'returns version as string' do
-    Mysql.get_client_info.should =~ /^\d.\d+.\d+[a-z]?(-.*)?$/
+describe 'Mysql.client_info' do
+  it 'returns client version as string' do
+    Mysql.client_info.should == '5.0.0'
   end
 end
 
-describe 'Mysql.client_info' do
-  it 'returns version as string' do
-    Mysql.client_info.should =~ /^\d.\d+.\d+[a-z]?(-.*)?$/
+describe 'Mysql.get_client_info' do
+  it 'returns client version as string' do
+    Mysql.get_client_info.should == '5.0.0'
+  end
+end
+
+describe 'Mysql.client_version' do
+  it 'returns client version as Integer' do
+    Mysql.client_version.should == 50000
+  end
+end
+
+describe 'Mysql.get_client_version' do
+  it 'returns client version as Integer' do
+    Mysql.client_version.should == 50000
+  end
+end
+
+describe 'Mysql#real_connect' do
+  it 'connect to mysqld' do
+    @m = Mysql.init
+    @m.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET).should == @m
+  end
+  after do
+    @m.close if @m
+  end
+end
+
+describe 'Mysql#connect' do
+  it 'connect to mysqld' do
+    @m = Mysql.init
+    @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET).should == @m
+  end
+  after do
+    @m.close if @m
   end
 end
 
@@ -83,37 +123,45 @@ describe 'Mysql#options' do
   before do
     @m = Mysql.init
   end
-  it 'INIT_COMMAND' do
+  after do
+    @m.close
+  end
+  it 'INIT_COMMAND: execute query when connecting' do
     @m.options(Mysql::INIT_COMMAND, "SET AUTOCOMMIT=0").should == @m
+    @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET).should == @m
+    @m.query('select @@AUTOCOMMIT').fetch_row.should == ["0"]
   end
-  it 'OPT_CONNECT_TIMEOUT' do
-    @m.options(Mysql::OPT_CONNECT_TIMEOUT, 10).should == @m
+  it 'OPT_CONNECT_TIMEOUT: set timeout for connecting' do
+    @m.options(Mysql::OPT_CONNECT_TIMEOUT, 0.1).should == @m
+    UNIXSocket.stub!(:new).and_return{sleep 1}
+    TCPSocket.stub!(:new).and_return{sleep 1}
+    proc{@m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)}.should raise_error Mysql::ClientError, 'connection timeout'
+    proc{@m.connect}.should raise_error Mysql::ClientError, 'connection timeout'
   end
-  it 'OPT_READ_TIMEOUT' do
+  it 'OPT_LOCAL_INFILE: client can execute LOAD DATA LOCAL INFILE query' do
+    tmpf = Tempfile.new 'mysql_spec'
+    tmpf.puts "123\tabc\n"
+    tmpf.close
+    @m.options(Mysql::OPT_LOCAL_INFILE, true).should == @m
+    @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    @m.query('create temporary table t (i int, c char(10))')
+    @m.query("load data local infile '#{tmpf.path}' into table t")
+    @m.query('select * from t').fetch_row.should == ['123','abc']
+  end
+#  it 'OPT_RECONNECT: connect automatically when connection is closed' do
+#    @m.options(Mysql::OPT_RECONNECT, true).should == @m
+#    @m.reconnect.should == true
+#  end
+  it 'OPT_READ_TIMEOUT: set timeout for reading packet' do
     @m.options(Mysql::OPT_READ_TIMEOUT, 10).should == @m
   end
-  it 'OPT_WRITE_TIMEOUT' do
+  it 'OPT_WRITE_TIMEOUT: set timeout for writing packet' do
     @m.options(Mysql::OPT_WRITE_TIMEOUT, 10).should == @m
   end
-end
-
-describe 'Mysql#real_connect' do
-  after do
-    @m.close if @m
-  end
-  it 'connect to mysqld' do
-    @m = Mysql.init
-    @m.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET).should == @m
-  end
-end
-
-describe 'Mysql#connect' do
-  after do
-    @m.close if @m
-  end
-  it 'connect to mysqld' do
-    @m = Mysql.init
-    @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET).should == @m
+  it 'SET_CHARSET_NAME: set charset for connection' do
+    @m.options(Mysql::SET_CHARSET_NAME, 'utf8').should == @m
+    @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    @m.query('select @@character_set_connection').fetch_row.should == ['utf8']
   end
 end
 
@@ -123,7 +171,45 @@ describe 'Mysql' do
   end
 
   after do
-    @m.close if @m
+    @m.close if @m rescue nil
+  end
+
+  describe '#escape_string' do
+    it 'escape special character for charset' do
+      m = Mysql.init
+      m.options Mysql::SET_CHARSET_NAME, 'cp932'
+      m.connect MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET
+      if defined? ::Encoding
+        m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')).should == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932')
+      else
+        m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\").should == "abc\\'def\\\"ghi\\0jkl%mno_\x95\\\\"   # unsafe for some charset such as cp932.
+      end
+    end
+  end
+
+  describe '#quote' do
+    it 'escape special character for charset' do
+      m = Mysql.init
+      m.options Mysql::SET_CHARSET_NAME, 'cp932'
+      m.connect MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET
+      if defined? ::Encoding
+        m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')).should == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932')
+      else
+        m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\").should == "abc\\'def\\\"ghi\\0jkl%mno_\x95\\\\"   # unsafe for some charset such as cp932.
+      end
+    end
+  end
+
+  describe '#client_info' do
+    it 'returns client version as string' do
+      @m.client_info.should == '5.0.0'
+    end
+  end
+
+  describe '#get_client_info' do
+    it 'returns client version as string' do
+      @m.get_client_info.should == '5.0.0'
+    end
   end
 
   describe '#affected_rows' do
@@ -134,16 +220,361 @@ describe 'Mysql' do
     end
   end
 
+  describe '#character_set_name' do
+    it 'returns charset name' do
+      m = Mysql.init
+      m.options Mysql::SET_CHARSET_NAME, 'cp932'
+      m.connect MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET
+      m.character_set_name.should == 'cp932'
+    end
+  end
+
+  describe '#close' do
+    it 'returns self' do
+      @m.close.should == @m
+    end
+  end
+
+#  describe '#create_db' do
+#  end
+
+#  describe '#drop_db' do
+#  end
+
+  describe '#errno' do
+    it 'returns error number of latest error' do
+      @m.query('hogehoge') rescue nil
+      @m.errno.should == 1064
+    end
+  end
+
+  describe '#error' do
+    it 'returns error message of latest error' do
+      @m.query('hogehoge') rescue nil
+      @m.error.should == "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'hogehoge' at line 1"
+    end
+  end
+
+  describe '#field_count' do
+    it 'returns number of fields for latest query' do
+      @m.query 'select 1,2,3'
+      @m.field_count.should == 3
+    end
+  end
+
+  describe '#client_version' do
+    it 'returns client version as Integer' do
+      @m.client_version.should be_kind_of Integer
+    end
+  end
+
+  describe '#get_client_version' do
+    it 'returns client version as Integer' do
+      @m.get_client_version.should be_kind_of Integer
+    end
+  end
+
+  describe '#get_host_info' do
+    it 'returns connection type as String' do
+      if MYSQL_SERVER == nil or MYSQL_SERVER == 'localhost'
+        @m.get_host_info.should == 'Localhost via UNIX socket'
+      else
+        @m.get_host_info.should == "#{MYSQL_SERVER} via TCP/IP"
+      end
+    end
+  end
+
+  describe '#host_info' do
+    it 'returns connection type as String' do
+      if MYSQL_SERVER == nil or MYSQL_SERVER == 'localhost'
+        @m.host_info.should == 'Localhost via UNIX socket'
+      else
+        @m.host_info.should == "#{MYSQL_SERVER} via TCP/IP"
+      end
+    end
+  end
+
+  describe '#get_proto_info' do
+    it 'returns version of connection as Integer' do
+      @m.get_proto_info.should == 10
+    end
+  end
+
+  describe '#proto_info' do
+    it 'returns version of connection as Integer' do
+      @m.proto_info.should == 10
+    end
+  end
+
+  describe '#get_server_info' do
+    it 'returns server version as String' do
+      @m.get_server_info.should =~ /\A\d+\.\d+\.\d+/
+    end
+  end
+
+  describe '#server_info' do
+    it 'returns server version as String' do
+      @m.server_info.should =~ /\A\d+\.\d+\.\d+/
+    end
+  end
+
+  describe '#info' do
+    it 'returns information of latest query' do
+      @m.query 'create temporary table t (id int)'
+      @m.query 'insert into t values (1),(2),(3)'
+      @m.info.should == 'Records: 3  Duplicates: 0  Warnings: 0'
+    end
+  end
+
+  describe '#insert_id' do
+    it 'returns latest auto_increment value' do
+      @m.query 'create temporary table t (id int auto_increment, unique (id))'
+      @m.query 'insert into t values (0)'
+      @m.insert_id.should == 1
+      @m.query 'alter table t auto_increment=1234'
+      @m.query 'insert into t values (0)'
+      @m.insert_id.should == 1234
+    end
+  end
+
+  describe '#kill' do
+    it 'returns self' do
+      @m.kill(@m.thread_id).should == @m
+    end
+    it 'kill specified connection' do
+      m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      m.list_processes.map(&:first).should be_include @m.thread_id.to_s
+      m.close
+    end
+  end
+
+  describe '#list_dbs' do
+    it 'returns database list' do
+      ret = @m.list_dbs
+      ret.should be_kind_of Array
+      ret.should be_include MYSQL_DATABASE
+    end
+    it 'with pattern returns databases that matches pattern' do
+      @m.list_dbs('info%').should be_include 'information_schema'
+    end
+  end
+
+  describe '#list_fields' do
+    before do
+      @m.query 'create temporary table t (i int, c char(10), d date)'
+    end
+    it 'returns result set that contains information of fields' do
+      ret = @m.list_fields('t')
+      ret.should be_kind_of Mysql::Result
+      ret.num_rows.should == 0
+      ret.fetch_fields.map{|f|f.name}.should == ['i','c','d']
+    end
+    it 'with pattern returns result set that contains information of fields that matches pattern' do
+      ret = @m.list_fields('t', 'i')
+      ret.should be_kind_of Mysql::Result
+      ret.num_rows.should == 0
+      ret.fetch_fields.map{|f|f.name}.should == ['i']
+    end
+  end
+
+  describe '#list_processes' do
+    it 'returns result set that contains information of all connections' do
+      ret = @m.list_processes
+      ret.should be_kind_of Mysql::Result
+      ret.find{|r|r[0].to_i == @m.thread_id}[4].should == "Processlist"
+    end
+  end
+
+  describe '#list_tables' do
+    before do
+      @m.query 'create table test_mysql_list_tables (id int)'
+    end
+    after do
+      @m.query 'drop table test_mysql_list_tables'
+    end
+    it 'returns table list' do
+      ret = @m.list_tables
+      ret.should be_kind_of Array
+      ret.should be_include 'test_mysql_list_tables'
+    end
+    it 'with pattern returns lists that matches pattern' do
+      ret = @m.list_tables '%mysql\_list\_t%'
+      ret.should be_include 'test_mysql_list_tables'
+    end
+  end
+
+  describe '#ping' do
+    it 'returns self' do
+      @m.ping.should == @m
+    end
+  end
+
+  describe '#query' do
+    it 'returns Mysql::Result if query returns results' do
+      @m.query('select 123').should be_kind_of Mysql::Result
+    end
+    it 'returns nil if query returns no results' do
+      @m.query('set @hoge:=123').should == nil
+    end
+    it 'returns self if query_with_result is false' do
+      @m.query_with_result = false
+      @m.query('select 123').should == @m
+      @m.store_result
+      @m.query('set @hoge:=123').should == @m
+    end
+  end
+
+  describe '#real_query' do
+    it 'is same as #query' do
+      @m.real_query('select 123').should be_kind_of Mysql::Result
+    end
+  end
+
+  describe '#refresh' do
+    it 'returns self' do
+      @m.refresh(Mysql::REFRESH_HOSTS).should == @m
+    end
+  end
+
+  describe '#reload' do
+    it 'returns self' do
+      @m.reload.should == @m
+    end
+  end
+
+  describe '#select_db' do
+    it 'changes default database' do
+      @m.select_db 'information_schema'
+      @m.query('select database()').fetch_row.first.should == 'information_schema'
+    end
+  end
+
+#  describe '#shutdown' do
+#  end
+
+  describe '#stat' do
+    it 'returns server status' do
+      @m.stat.should =~ /\AUptime: \d+  Threads: \d+  Questions: \d+  Slow queries: \d+  Opens: \d+  Flush tables: \d+  Open tables: \d+  Queries per second avg: \d+\.\d+\z/
+    end
+  end
+
+  describe '#store_result' do
+    it 'returns Mysql::Result' do
+      @m.query_with_result = false
+      @m.query 'select 1,2,3'
+      ret = @m.store_result
+      ret.should be_kind_of Mysql::Result
+      ret.fetch_row.should == ['1','2','3']
+    end
+    it 'raises error when no query' do
+      proc{@m.store_result}.should raise_error Mysql::Error
+    end
+    it 'raises error when query does not return results' do
+      @m.query 'set @hoge:=123'
+      proc{@m.store_result}.should raise_error Mysql::Error
+    end
+  end
+
+  describe '#thread_id' do
+    it 'returns thread id as Integer' do
+      @m.thread_id.should be_kind_of Integer
+    end
+  end
+
+  describe '#use_result' do
+    it 'returns Mysql::Result' do
+      @m.query_with_result = false
+      @m.query 'select 1,2,3'
+      ret = @m.use_result
+      ret.should be_kind_of Mysql::Result
+      ret.fetch_row.should == ['1','2','3']
+    end
+    it 'raises error when no query' do
+      proc{@m.use_result}.should raise_error Mysql::Error
+    end
+    it 'raises error when query does not return results' do
+      @m.query 'set @hoge:=123'
+      proc{@m.use_result}.should raise_error Mysql::Error
+    end
+  end
+
+  describe '#get_server_version' do
+    it 'returns server version as Integer' do
+      @m.get_server_version.should be_kind_of Integer
+    end
+  end
+
+  describe '#server_version' do
+    it 'returns server version as Integer' do
+      @m.server_version.should be_kind_of Integer
+    end
+  end
+
+  describe '#warning_count' do
+    it 'default values is zero' do
+      @m.warning_count.should == 0
+    end
+    it 'returns number of warnings' do
+      @m.query 'create temporary table t (i tinyint)'
+      @m.query 'insert into t values (1234567)'
+      @m.warning_count.should == 1
+    end
+  end
+
+  describe '#commit' do
+    it 'returns self' do
+      @m.commit.should == @m
+    end
+  end
+
+  describe '#rollback' do
+    it 'returns self' do
+      @m.rollback.should == @m
+    end
+  end
+
   describe '#autocommit' do
-    it 'change auto-commit mode' do
+    it 'returns self' do
       @m.autocommit(true).should == @m
+    end
+
+    it 'change auto-commit mode' do
+      @m.autocommit(true)
       @m.query('select @@autocommit').fetch_row.should == ['1']
-      @m.autocommit(false).should == @m
+      @m.autocommit(false)
       @m.query('select @@autocommit').fetch_row.should == ['0']
     end
   end
 
-  describe '#query_with_result=false' do
+  describe '#set_server_option' do
+    it 'returns self' do
+      @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON).should == @m
+    end
+  end
+
+  describe '#sqlstate' do
+    it 'default values is "00000"' do
+      @m.sqlstate.should == "00000"
+    end
+    it 'returns sqlstate code' do
+      proc{@m.query("hoge")}.should raise_error
+      @m.sqlstate.should == "42000"
+    end
+  end
+
+  describe '#query_with_result' do
+    it 'default value is true' do
+      @m.query_with_result.should == true
+    end
+    it 'can set value' do
+      (@m.query_with_result=true).should == true
+      @m.query_with_result.should == true
+      (@m.query_with_result=false).should == false
+      @m.query_with_result.should == false
+    end
+  end
+
+  describe '#query_with_result is false' do
     it 'Mysql#query returns self and Mysql#store_result returns result set' do
       @m.query_with_result = false
       @m.query('select 1,2,3').should == @m
@@ -164,22 +595,9 @@ describe 'Mysql' do
     end
   end
 
-  it 'multi statement query' do
-    @m.query_with_result = false
-    @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
-    @m.query 'select 1,2,3; select 4,5,6'
-    res = @m.store_result
-    res.fetch_row.should == ['1','2','3']
-    res.fetch_row.should == nil
-    @m.more_results.should == true
-    @m.more_results?.should == true
-    @m.next_result.should == true
-    res = @m.store_result
-    res.fetch_row.should == ['4','5','6']
-    @m.more_results.should == false
-    @m.more_results?.should == false
-    @m.next_result.should == false
-  end
+#  describe '#reconnect is true' do
+#    it 'automatically connect when connection is broken'
+#  end
 
   describe '#query with block' do
     it 'returns self' do
@@ -188,7 +606,7 @@ describe 'Mysql' do
     it 'evaluate block with Mysql::Result' do
       @m.query('select 1'){|res| res.should be_kind_of Mysql::Result}.should == @m
     end
-    it 'evaluate block multiple times if multiple query' do
+    it 'evaluate block multiple times if multiple query is specified' do
       @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
       cnt = 0
       expect = [["1"], ["2"]]
@@ -198,22 +616,50 @@ describe 'Mysql' do
       }.should == @m
       cnt.should == 2
     end
-  end
-
-  describe '#set_server_option' do
-    it 'returns self' do
-      @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON).should == @m
+    it 'evaluate block only when query has result' do
+      @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
+      cnt = 0
+      expect = [["1"], ["2"]]
+      @m.query('select 1; set @hoge:=1; select 2'){|res|
+        res.fetch_row.should == expect.shift
+        cnt += 1
+      }.should == @m
+      cnt.should == 2
     end
   end
+end
 
-  describe '#sqlstate' do
-    it 'returns sqlstate code' do
-      @m.sqlstate.should == "00000"
-      proc{@m.query("hoge")}.should raise_error
-      @m.sqlstate.should == "42000"
-    end
+describe 'multiple statement query:' do
+  before :all do
+    @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
+    @res = @m.query 'select 1,2; select 3,4,5'
   end
-
+  it 'Mysql#query returns results for first query' do
+    @res.entries.should == [['1','2']]
+  end
+  it 'Mysql#more_results is true' do
+    @m.more_results.should == true
+  end
+  it 'Mysql#more_results? is true' do
+    @m.more_results?.should == true
+  end
+  it 'Mysql#next_result is true' do
+    @m.next_result.should == true
+  end
+  it 'Mysql#store_result returns results for next query' do
+    res = @m.store_result
+    res.entries.should == [['3','4','5']]
+  end
+  it 'Mysql#more_results is false' do
+    @m.more_results.should == false
+  end
+  it 'Mysql#more_results? is false' do
+    @m.more_results?.should == false
+  end
+  it 'Mysql#next_result is false' do
+    @m.next_result.should == false
+  end
 end
 
 describe 'Mysql::Result' do
@@ -228,79 +674,12 @@ describe 'Mysql::Result' do
     @m.close if @m
   end
 
-  it '#num_fields returns number of fields' do
-    @res.num_fields.should == 2
-  end
-
-  it '#num_rows returns number of records' do
-    @res.num_rows.should == 4
-  end
-
-  it '#fetch_row returns one record as array for current record' do
-    @res.fetch_row.should == ['1', 'abc']
-    @res.fetch_row.should == ['2', 'defg']
-    @res.fetch_row.should == ['3', 'hi']
-    @res.fetch_row.should == ['4', nil]
-    @res.fetch_row.should == nil
-  end
-
-  it '#fetch_hash returns one record as hash for current record' do
-    @res.fetch_hash.should == {'id'=>'1', 'str'=>'abc'}
-    @res.fetch_hash.should == {'id'=>'2', 'str'=>'defg'}
-    @res.fetch_hash.should == {'id'=>'3', 'str'=>'hi'}
-    @res.fetch_hash.should == {'id'=>'4', 'str'=>nil}
-    @res.fetch_hash.should == nil
-  end
-
-  it '#fetch_hash(true) returns with table name' do
-    @res.fetch_hash(true).should == {'t.id'=>'1', 't.str'=>'abc'}
-    @res.fetch_hash(true).should == {'t.id'=>'2', 't.str'=>'defg'}
-    @res.fetch_hash(true).should == {'t.id'=>'3', 't.str'=>'hi'}
-    @res.fetch_hash(true).should == {'t.id'=>'4', 't.str'=>nil}
-    @res.fetch_hash(true).should == nil
-  end
-
-  it '#each iterate block with a record' do
-    ret = []
-    @res.each do |a|
-      ret.push a
-    end
-    ret.should == [["1","abc"], ["2","defg"], ["3","hi"], ["4",nil]]
-  end
-
-  it '#each_hash iterate block with a hash' do
-    ret = []
-    @res.each_hash do |a|
-      ret.push a
-    end
-    ret.should == [{"id"=>"1","str"=>"abc"}, {"id"=>"2","str"=>"defg"}, {"id"=>"3","str"=>"hi"}, {"id"=>"4","str"=>nil}]
-  end
-
   it '#data_seek set position of current record' do
     @res.fetch_row.should == ['1', 'abc']
     @res.fetch_row.should == ['2', 'defg']
     @res.fetch_row.should == ['3', 'hi']
     @res.data_seek 1
     @res.fetch_row.should == ['2', 'defg']
-  end
-
-  it '#row_tell returns position of current record, #row_seek set position of current record' do
-    @res.fetch_row.should == ['1', 'abc']
-    pos = @res.row_tell
-    @res.fetch_row.should == ['2', 'defg']
-    @res.fetch_row.should == ['3', 'hi']
-    @res.row_seek pos
-    @res.fetch_row.should == ['2', 'defg']
-  end
-
-  it '#field_tell returns position of current field, #field_seek set position of current field' do
-    @res.field_tell.should == 0
-    @res.fetch_field
-    @res.field_tell.should == 1
-    @res.fetch_field
-    @res.field_tell.should == 2
-    @res.field_seek 1
-    @res.field_tell.should == 1
   end
 
   it '#fetch_field return current field' do
@@ -356,18 +735,142 @@ describe 'Mysql::Result' do
     @res.fetch_row
     @res.fetch_lengths.should == nil
   end
+
+  it '#fetch_row returns one record as array for current record' do
+    @res.fetch_row.should == ['1', 'abc']
+    @res.fetch_row.should == ['2', 'defg']
+    @res.fetch_row.should == ['3', 'hi']
+    @res.fetch_row.should == ['4', nil]
+    @res.fetch_row.should == nil
+  end
+
+  it '#fetch_hash returns one record as hash for current record' do
+    @res.fetch_hash.should == {'id'=>'1', 'str'=>'abc'}
+    @res.fetch_hash.should == {'id'=>'2', 'str'=>'defg'}
+    @res.fetch_hash.should == {'id'=>'3', 'str'=>'hi'}
+    @res.fetch_hash.should == {'id'=>'4', 'str'=>nil}
+    @res.fetch_hash.should == nil
+  end
+
+  it '#fetch_hash(true) returns with table name' do
+    @res.fetch_hash(true).should == {'t.id'=>'1', 't.str'=>'abc'}
+    @res.fetch_hash(true).should == {'t.id'=>'2', 't.str'=>'defg'}
+    @res.fetch_hash(true).should == {'t.id'=>'3', 't.str'=>'hi'}
+    @res.fetch_hash(true).should == {'t.id'=>'4', 't.str'=>nil}
+    @res.fetch_hash(true).should == nil
+  end
+
+  it '#num_fields returns number of fields' do
+    @res.num_fields.should == 2
+  end
+
+  it '#num_rows returns number of records' do
+    @res.num_rows.should == 4
+  end
+
+  it '#each iterate block with a record' do
+    expect = [["1","abc"], ["2","defg"], ["3","hi"], ["4",nil]]
+    @res.each do |a|
+      a.should == expect.shift
+    end
+  end
+
+  it '#each_hash iterate block with a hash' do
+    expect = [{"id"=>"1","str"=>"abc"}, {"id"=>"2","str"=>"defg"}, {"id"=>"3","str"=>"hi"}, {"id"=>"4","str"=>nil}]
+    @res.each_hash do |a|
+      a.should == expect.shift
+    end
+  end
+
+  it '#each_hash(true): hash key has table name' do
+    expect = [{"t.id"=>"1","t.str"=>"abc"}, {"t.id"=>"2","t.str"=>"defg"}, {"t.id"=>"3","t.str"=>"hi"}, {"t.id"=>"4","t.str"=>nil}]
+    @res.each_hash(true) do |a|
+      a.should == expect.shift
+    end
+  end
+
+  it '#row_tell returns position of current record, #row_seek set position of current record' do
+    @res.fetch_row.should == ['1', 'abc']
+    pos = @res.row_tell
+    @res.fetch_row.should == ['2', 'defg']
+    @res.fetch_row.should == ['3', 'hi']
+    @res.row_seek pos
+    @res.fetch_row.should == ['2', 'defg']
+  end
+
+  it '#field_tell returns position of current field, #field_seek set position of current field' do
+    @res.field_tell.should == 0
+    @res.fetch_field
+    @res.field_tell.should == 1
+    @res.fetch_field
+    @res.field_tell.should == 2
+    @res.field_seek 1
+    @res.field_tell.should == 1
+  end
+
+  it '#free returns nil' do
+    @res.free.should == nil
+  end
+
+  it '#num_fields returns number of fields' do
+    @res.num_fields.should == 2
+  end
+
+  it '#num_rows returns number of records' do
+    @res.num_rows.should == 4
+  end
 end
 
 describe 'Mysql::Field' do
   before do
     @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-    @m.query 'create temporary table t (id int, str char(10), primary key (id))'
+    @m.query 'create temporary table t (id int default 0, str char(10), primary key (id))'
     @m.query "insert into t values (1,'abc'),(2,'defg'),(3,'hi'),(4,null)"
     @res = @m.query 'select * from t'
   end
 
   after do
     @m.close if @m
+  end
+
+  it '#name is name of field' do
+    @res.fetch_field.name.should == 'id'
+  end
+
+  it '#table is name of table for field' do
+    @res.fetch_field.table.should == 't'
+  end
+
+  it '#def for result set is null' do
+    @res.fetch_field.def.should == nil
+  end
+
+  it '#def for field information is default value' do
+    @m.list_fields('t').fetch_field.def.should == '0'
+  end
+
+  it '#type is type of field as Integer' do
+    @res.fetch_field.type.should == Mysql::Field::TYPE_LONG
+    @res.fetch_field.type.should == Mysql::Field::TYPE_STRING
+  end
+
+  it '#length is length of field' do
+    @res.fetch_field.length.should == 11
+    @res.fetch_field.length.should == 10
+  end
+
+  it '#max_length is maximum length of field value' do
+    @res.fetch_field.max_length.should == 1
+    @res.fetch_field.max_length.should == 4
+  end
+
+  it '#flags is flag of field as Integer' do
+    @res.fetch_field.flags.should == Mysql::Field::NUM_FLAG|Mysql::Field::PRI_KEY_FLAG|Mysql::Field::PART_KEY_FLAG|Mysql::Field::NOT_NULL_FLAG
+    @res.fetch_field.flags.should == 0
+  end
+
+  it '#decimals is number of decimal digits' do
+    @m.query('select 1.23').fetch_field.decimals.should == 2
   end
 
   it '#hash return field as hash' do
@@ -439,21 +942,8 @@ describe 'Mysql::Stmt' do
   end
 
   after do
-    @s.close if @s
+    @s.close if @s rescue nil
     @m.close if @m
-  end
-
-  it '#prepare returns self' do
-    @s.prepare('select 1').should == @s
-  end
-
-  it '#prepare with invalid query raises error' do
-    proc{@s.prepare 'invalid query'}.should raise_error Mysql::ParseError
-  end
-
-  it '#execute returns self' do
-    @s.prepare 'select 1'
-    @s.execute.should == @s
   end
 
   it '#affected_rows returns number of affected records' do
@@ -521,9 +1011,13 @@ describe 'Mysql::Stmt' do
       proc{@s.bind_result(Time, nil, nil, nil)}.should raise_error(TypeError)
     end
 
-    it 'mismatch argument count' do
-      proc{@s.bind_result(nil)}.should raise_error(Mysql::Error, 'bind_result: result value count(4) != number of argument(1)')
+    it 'with mismatch argument count raise error' do
+      proc{@s.bind_result(nil)}.should raise_error(Mysql::ClientError, 'bind_result: result value count(4) != number of argument(1)')
     end
+  end
+
+  it '#close returns nil' do
+    @s.close.should == nil
   end
 
   it '#data_seek set position of current record' do
@@ -540,12 +1034,32 @@ describe 'Mysql::Stmt' do
     @s.fetch.should == [1]
   end
 
-  it '#execute with an argument' do
+  it '#each iterate block with a record' do
+    @m.query 'create temporary table t (i int, c char(255), d datetime)'
+    @m.query "insert into t values (1,'abc','19701224235905'),(2,'def','21120903123456'),(3,'123',null)"
+    @s.prepare 'select * from t'
+    @s.execute
+    expect = [
+      [1, 'abc', Mysql::Time.new(1970,12,24,23,59,05)],
+      [2, 'def', Mysql::Time.new(2112,9,3,12,34,56)],
+      [3, '123', nil],
+    ]
+    @s.each do |a|
+      a.should == expect.shift
+    end
+  end
+
+  it '#execute returns self' do
+    @s.prepare 'select 1'
+    @s.execute.should == @s
+  end
+
+  it '#execute pass arguments to query' do
     @m.query 'create temporary table t (i int)'
     @s.prepare 'insert into t values (?)'
     @s.execute 123
     @s.execute '456'
-    @m.query('select * from t').to_a.should == [['123'], ['456']]
+    @m.query('select * from t').entries.should == [['123'], ['456']]
   end
 
   it '#execute with various arguments' do
@@ -555,9 +1069,9 @@ describe 'Mysql::Stmt' do
     @m.query('select * from t').fetch_row.should == ['123', 'hoge', '2009-12-08 19:56:21']
   end
 
-  it '#execute with arguments that is invalid count' do
+  it '#execute with arguments that is invalid count raise error' do
     @s.prepare 'select ?'
-    proc{@s.execute 123, 456}.should raise_error(Mysql::Error, 'parameter count mismatch')
+    proc{@s.execute 123, 456}.should raise_error(Mysql::ClientError, 'parameter count mismatch')
   end
 
   it '#execute with huge value' do
@@ -898,21 +1412,6 @@ describe 'Mysql::Stmt' do
     @s.entries.should == [[nil], [''], ['abc'], ['def'], ['abc,def'], ['abc'], ['def'], ['abc,def'], ['']]
   end
 
-  it '#each' do
-    @m.query 'create temporary table t (i int, c char(255), d datetime)'
-    @m.query "insert into t values (1,'abc','19701224235905'),(2,'def','21120903123456'),(3,'123',null)"
-    @s.prepare 'select * from t'
-    @s.execute
-    expect = [
-      [1, 'abc', Mysql::Time.new(1970,12,24,23,59,05)],
-      [2, 'def', Mysql::Time.new(2112,9,3,12,34,56)],
-      [3, '123', nil],
-    ]
-    @s.each do |a|
-      a.should == expect.shift
-    end
-  end
-
   it '#field_count' do
     @s.prepare 'select 1,2,3'
     @s.field_count.should == 3
@@ -955,6 +1454,14 @@ describe 'Mysql::Stmt' do
   it '#prepare' do
     @s.prepare('select 1').should be_kind_of Mysql::Stmt
     proc{@s.prepare 'invalid syntax'}.should raise_error Mysql::ParseError
+  end
+
+  it '#prepare returns self' do
+    @s.prepare('select 1').should == @s
+  end
+
+  it '#prepare with invalid query raises error' do
+    proc{@s.prepare 'invalid query'}.should raise_error Mysql::ParseError
   end
 
   it '#result_metadata' do
@@ -1007,6 +1514,18 @@ describe 'Mysql::Time' do
     @t.second_part.should == 0
   end
 
+  it '#inspect' do
+    Mysql::Time.new(2009,12,8,23,35,21).inspect.should == '#<Mysql::Time:2009-12-08 23:35:21>'
+  end
+
+  it '#to_s' do
+    Mysql::Time.new(2009,12,8,23,35,21).to_s.should == '2009-12-08 23:35:21'
+  end
+
+  it '#to_i' do
+    Mysql::Time.new(2009,12,8,23,35,21).to_i.should == 20091208233521
+  end
+
   it '#year' do
     (@t.year = 2009).should == 2009
     @t.year.should == 2009
@@ -1037,17 +1556,39 @@ describe 'Mysql::Time' do
     @t.second.should == 21
   end
 
-  it '#to_s' do
-    Mysql::Time.new(2009,12,8,23,35,21).to_s.should == '2009-12-08 23:35:21'
+  it '#neg' do
+    @t.neg.should == false
   end
 
-  it '#to_i' do
-    Mysql::Time.new(2009,12,8,23,35,21).to_i.should == 20091208233521
+  it '#second_part' do
+    @t.second_part.should == 0
   end
 
-  it '#eql' do
+  it '#==' do
     t1 = Mysql::Time.new 2009,12,8,23,35,21
     t2 = Mysql::Time.new 2009,12,8,23,35,21
     t1.should == t2
+  end
+end
+
+describe 'Mysql::Error' do
+  before do
+    m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    begin
+      m.query('hogehoge')
+    rescue => @e
+    end
+  end
+
+  it '#error is error message' do
+    @e.error.should == "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'hogehoge' at line 1"
+  end
+
+  it '#errno is error number' do
+    @e.errno.should == 1064
+  end
+
+  it '#sqlstate is sqlstate value as String' do
+    @e.sqlstate.should == '42000'
   end
 end
