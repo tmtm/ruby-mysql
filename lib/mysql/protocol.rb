@@ -76,7 +76,7 @@ class Mysql
     def self.net2value(data, type, unsigned)
       case type
       when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB
-        return Protocol.lcs2str!(data)
+        return lcs2str!(data)
       when Field::TYPE_TINY
         v = data.slice!(0).ord
         return unsigned ? v : v < 128 ? v : v-256
@@ -106,7 +106,7 @@ class Mysql
       when Field::TYPE_YEAR
         return data.slice!(0,2).unpack("v").first
       when Field::TYPE_BIT
-        return Protocol.lcs2str!(data)
+        return lcs2str!(data)
       else
         raise "not implemented: type=#{type}"
       end
@@ -163,7 +163,7 @@ class Mysql
         val = [v].pack("E")
       when String
         type = Field::TYPE_STRING
-        val = Protocol.lcs(v)
+        val = lcs(v)
       when Mysql::Time, ::Time
         type = Field::TYPE_DATETIME
         val = [7, v.year, v.month, v.day, v.hour, v.min, v.sec].pack("CvCCCCC")
@@ -173,7 +173,16 @@ class Mysql
       return type, val
     end
 
+    attr_reader :server_info
+    attr_reader :server_version
+    attr_reader :thread_id
+    attr_reader :charset
     attr_reader :sqlstate
+    attr_reader :affected_rows
+    attr_reader :insert_id
+    attr_reader :server_status
+    attr_reader :warning_count
+    attr_reader :message
     attr_accessor :reconnect
 
     # make socket connection to server.
@@ -306,7 +315,7 @@ class Mysql
     # ProtocolError :: packet is not EOF
     def read_eof_packet
       data = read
-      raise ProtocolError, "packet is not EOF" unless Protocol.eof_packet? data
+      raise ProtocolError, "packet is not EOF" unless self.class.eof_packet? data
     end
 
     # Read initial packet
@@ -341,6 +350,231 @@ class Mysql
     # ProtocolError :: invalid packet
     def read_prepare_result_packet
       PrepareResultPacket.parse read
+    end
+
+    # Send simple command
+    # === Argument
+    # packet :: TxPacket class
+    # args   :: packet parameter
+    # === Return
+    # [String] received data
+    def simple_command(packet, *args)
+      synchronize do
+        reset
+        send_packet packet.new(*args)
+        read
+      end
+    end
+
+    # initial negotiate and authenticate.
+    # === Argument
+    # user    :: [String / nil] username
+    # passwd  :: [String / nil] password
+    # db      :: [String / nil] default database name. nil: no default.
+    # flag    :: [Integer] client flag
+    # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
+    def authenticate(user, passwd, db, flag, charset)
+      synchronize do
+        init_packet = read_initial_packet
+        @server_info = init_packet.server_version
+        @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+        @thread_id = init_packet.thread_id
+        client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+        client_flags |= CLIENT_CONNECT_WITH_DB if db
+        client_flags |= flag
+        @charset = charset
+        unless @charset
+          @charset = Charset.by_number(init_packet.server_charset)
+          @charset.encoding       # raise error if unsupported charset
+        end
+        netpw = encrypt_password passwd, init_packet.scramble_buff
+        auth_packet = Protocol::AuthenticationPacket.new client_flags, 1024**3, @charset.number, user, netpw, db
+        send_packet auth_packet
+        read            # skip OK packet
+      end
+    end
+
+    # Quit command
+    def quit_command
+      synchronize do
+        reset
+        send_packet QuitPacket.new
+        close
+      end
+    end
+
+    # Query command
+    # === Argument
+    # query :: [String] query string
+    # === Return
+    # [Integer / nil] number of fields of results. nil if no results.
+    def query_command(query)
+      synchronize do
+        reset
+        send_packet QueryPacket.new(@charset.convert(query))
+        get_result
+      end
+    end
+
+    # get result of query.
+    # === Return
+    # [integer / nil] number of fields of results. nil if no results.
+    def get_result
+      res_packet = read_result_packet
+      if res_packet.field_count.to_i > 0  # result data exists
+        return res_packet.field_count
+      end
+      if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
+        filename = res_packet.message
+        File.open(filename){|f| write f}
+        write nil  # EOF mark
+        read
+      end
+      @affected_rows, @insert_id, @server_status, @warning_count, @message =
+        res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
+      return nil
+    end
+
+    def retr_fields(n)
+      fields = n.times.map{Field.new read_field_packet}
+      read_eof_packet
+      fields
+    end
+
+    def retr_all_records(fields)
+      all_recs = []
+      until self.class.eof_packet?(data = read)
+        all_recs.push fields.map{self.class.lcs2str! data}
+      end
+      @server_status = data[3].ord
+      all_recs
+    end
+
+    # Field list command
+    # === Argument
+    # table :: [String] table name.
+    # field :: [String / nil] field name that may contain wild card.
+    # === Return
+    # [Array of Field] field list
+    def field_list_command(table, field)
+      synchronize do
+        reset
+        send_packet FieldListPacket.new(table, field)
+        fields = []
+        until self.class.eof_packet?(data = read)
+          fields.push Field.new(FieldPacket.parse(data))
+        end
+        return fields
+      end
+    end
+
+    # Process info command
+    # === Return
+    # [Array of Field] field list
+    def process_info_command
+      synchronize do
+        reset
+        send_packet ProcessInfoPacket.new
+        field_count = self.class.lcb2int!(read)
+        fields = field_count.times.map{Field.new read_field_packet}
+        read_eof_packet
+        return fields
+      end
+    end
+
+    # Ping command
+    def ping_command
+      simple_command PingPacket
+    end
+
+    # Kill command
+    def kill_command(pid)
+      simple_command ProcessKillPacket, pid
+    end
+
+    # Refresh command
+    def refresh_command(op)
+      simple_command RefreshPacket, op
+    end
+
+    # Set option command
+    def set_option_command(opt)
+      simple_command SetOptionPacket, opt
+    end
+
+    # Shutdown command
+    def shutdown_command(level)
+      simple_command ShutdownPacket, level
+    end
+
+    # Statistics command
+    def statistics_command
+      simple_command StatisticsPacket
+    end
+
+    # Stmt prepare command
+    # === Argument
+    # stmt :: [String] prepared statement
+    # === Return
+    # [Integer] statement id
+    # [Integer] number of parameters
+    # [Array of Field] field list
+    def stmt_prepare_command(stmt)
+      synchronize do
+        reset
+        send_packet PreparePacket.new(charset.convert(stmt))
+        res_packet = read_prepare_result_packet
+        if res_packet.param_count > 0
+          res_packet.param_count.times{read}    # skip parameter packet
+          read_eof_packet
+        end
+        if res_packet.field_count > 0
+          fields = res_packet.field_count.times.map{Field.new read_field_packet}
+          read_eof_packet
+        else
+          fields = []
+        end
+        return res_packet.statement_id, res_packet.param_count, fields
+      end
+    end
+
+    # Stmt execute command
+    # === Argument
+    # stmt_id :: [Integer] statement id
+    # values  :: [Array] parameters
+    # === Return
+    # [Integer] number of fields
+    def stmt_execute_command(stmt_id, values)
+      synchronize do
+        reset
+        send_packet ExecutePacket.new(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
+        return get_result
+      end
+    end
+
+    # Stmt close command
+    # === Argument
+    # stmt_id :: [Integer] statement id
+    def stmt_close_command(stmt_id)
+      synchronize do
+        reset
+        send_packet StmtClosePacket.new(stmt_id)
+      end
+    end
+
+    private
+
+    # encrypt password
+    # === Argument
+    # plain    :: [String] plain password.
+    # scramble :: [String] scramble code from initial packet.
+    # === Return
+    # [String] encrypted password
+    def encrypt_password(plain, scramble)
+      return "" if plain.nil? or plain.empty?
+      hash_stage1 = Digest::SHA1.digest plain
+      hash_stage2 = Digest::SHA1.digest hash_stage1
+      return hash_stage1.unpack("C*").zip(Digest::SHA1.digest(scramble+hash_stage2).unpack("C*")).map{|a,b| a^b}.pack("C*")
     end
 
     # client->server packet base class
@@ -553,8 +787,6 @@ class Mysql
     end
 
     class FieldListPacket < TxPacket
-      attr_accessor :table, :field
-
       def initialize(table, field=nil)
         @table, @field = table, field
       end
@@ -630,7 +862,7 @@ class Mysql
         @pid = pid
       end
       def serialize
-        [Mysql::COM_PROCESS_KILL, @pid].pack("Cv")
+        [Mysql::COM_PROCESS_KILL, @pid].pack("CV")
       end
     end
 

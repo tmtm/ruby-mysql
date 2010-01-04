@@ -6,11 +6,10 @@ require "uri"
 
 # MySQL connection class.
 # === Example
-#  Mysql.connect("mysql://user:password@hostname:port/dbname") do |my|
-#    res = my.query "select col1,col2 from tbl where id=?", 123
-#    res.each do |c1, c2|
-#      p c1, c2
-#    end
+#  my = Mysql.connect('hostname', 'user', 'password', 'dbname')
+#  res = my.query 'select col1,col2 from tbl where id=123'
+#  res.each do |c1, c2|
+#    p c1, c2
 #  end
 class Mysql
 
@@ -26,13 +25,12 @@ class Mysql
 
   attr_reader :charset               # character set of MySQL connection
   attr_reader :affected_rows         # number of affected records by insert/update/delete.
-  attr_reader :server_status         # :nodoc:
   attr_reader :warning_count         # number of warnings for previous query
   attr_reader :protocol              # :nodoc:
   attr_reader :sqlstate              # sqlstate for latest query
 
   attr_accessor :query_with_result
-  attr_accessor :reconnect
+  attr_accessor :reconnect           # if true, reconnect automaticalley
 
   class << self
     # Make Mysql object without connecting.
@@ -75,7 +73,7 @@ class Mysql
     end
     alias get_client_info client_info
 
-    # Return client version as Integer
+    # Return client version as Integer.
     # This value is dummy. If you want to get version of this library, use Mysql::VERSION.
     def client_version
       50000
@@ -93,7 +91,6 @@ class Mysql
     @init_command = nil
     @affected_rows = nil
     @warning_count = 0
-    @server_version = nil
     @sqlstate = "00000"
     @connected = false
     @query_with_result = true
@@ -101,42 +98,25 @@ class Mysql
     @host_info = nil
     @info = nil
     @last_error = nil
-    @thread_id = nil
     @result_exist = false
     @local_infile = nil
   end
 
   # Connect to mysqld.
   # === Argument
-  # host   :: [String] hostname mysqld running
-  # user   :: [String] username to connect to mysqld
-  # passwd :: [String] password to connect to mysqld
-  # db     :: [String] initial database name
-  # port   :: [Integer] port number (used if host is not 'localhost' or nil)
-  # socket :: [String] socket file name (used if host is 'localhost' or nil)
-  # flag   :: [Integer] connection flag. Mysql::CLIENT_* ORed
+  # host   :: [String / nil] hostname mysqld running
+  # user   :: [String / nil] username to connect to mysqld
+  # passwd :: [String / nil] password to connect to mysqld
+  # db     :: [String / nil] initial database name
+  # port   :: [Integer / nil] port number (used if host is not 'localhost' or nil)
+  # socket :: [String / nil] socket file name (used if host is 'localhost' or nil)
+  # flag   :: [Integer / nil] connection flag. Mysql::CLIENT_* ORed
   # === Return
   # self
   def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
     @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
-    @protocol.synchronize do
-      init_packet = @protocol.read_initial_packet
-      @server_info = init_packet.server_version
-      @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
-      @thread_id = init_packet.thread_id
-      client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
-      client_flags |= CLIENT_CONNECT_WITH_DB if db
-      client_flags |= flag if flag
-      client_flags |= CLIENT_LOCAL_FILES if @local_infile
-      unless @charset
-        @charset = Charset.by_number(init_packet.server_charset)
-        @charset.encoding       # raise error if unsupported charset
-      end
-      netpw = init_packet.crypt_password passwd
-      auth_packet = Protocol::AuthenticationPacket.new client_flags, 1024**3, @charset.number, user, netpw, db
-      @protocol.send_packet auth_packet
-      @protocol.read            # skip OK packet
-    end
+    @protocol.authenticate user, passwd, db, (@local_infile ? CLIENT_LOCAL_FILES : 0), @charset
+    @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
     query @init_command if @init_command
     return self
@@ -146,12 +126,8 @@ class Mysql
   # Disconnect from mysql.
   def close
     if @protocol
-      @protocol.synchronize do
-        @protocol.reset
-        @protocol.send_packet Protocol::QuitPacket.new
-        @protocol.close
-        @protocol = nil
-      end
+      @protocol.quit_command
+      @protocol = nil
     end
     return self
   end
@@ -219,11 +195,15 @@ class Mysql
   end
   alias quote escape_string
 
+  # === Return
+  # [String] client version
   def client_info
     self.class.client_info
   end
   alias get_client_info client_info
 
+  # === Return
+  # [Integer] client version
   def client_version
     self.class.client_version
   end
@@ -241,92 +221,66 @@ class Mysql
     cs
   end
 
-  # Return charset name
+  # === Return
+  # [String] charset name
   def character_set_name
     @charset.name
   end
 
-  # Create database
-  # === Argument
-  # db :: [String] database name
-  # === Return
-  # self
-  def create_db(db)
-    query "create database #{db}"
-    self
-  end
-
-  # Drop database.
-  # === Argument
-  # db :: [String] database name
-  # === Return
-  # self
-  def drop_db(db)
-    query "drop database #{db}"
-    self
-  end
-
-  # Return last error number.
-  # === Return
-  # [Integer]
+  # === Integer
+  # [Integer] last error number
   def errno
     @last_error && @last_error.errno
   end
 
-  # Return last error message.
   # === Return
-  # [String]
+  # [String] last error message
   def error
     @last_error && @last_error.error
   end
 
-  # Return number of columns for last query.
   # === Return
-  # [Integer]
+  # [Integer] number of columns for last query
   def field_count
     @fields.size
   end
 
-  # Return connection type.
   # === Return
-  # [String]
+  # [String] connection type
   def host_info
     @host_info
   end
   alias get_host_info host_info
 
-  # Return protocol version.
   # === Return
-  # [Integer]
+  # [Integer] protocol version
   def proto_info
     Mysql::Protocol::VERSION
   end
   alias get_proto_info proto_info
 
-  # Return server version as String
   # === Return
-  # [String]
+  # [String] server version
   def server_info
-    @server_info
+    @protocol.server_info
   end
   alias get_server_info server_info
 
-  # Return server version as Integer
+  # === Return
+  # [Integer] server version
   def server_version
-    @server_version
+    @protocol.server_version
   end
   alias get_server_version server_version
 
-  # Return information for last query.
   # === Return
-  # [String]
+  # [String] information for last query
   def info
     @info
   end
 
-  # Return latest auto_increment value.
   # === Return
-  # [Integer]
+  # [Integer] latest auto_increment value
   def insert_id
     @insert_id
   end
@@ -337,20 +291,18 @@ class Mysql
   # === Return
   # self
   def kill(pid)
-    query "kill #{pid}"
+    @protocol.kill_command pid
     self
   end
 
   # Return database list.
-  #
-  # NOTE for Ruby 1.8: This is not multi-byte safe. Don't use for
-  # multi-byte charset such as cp932.
   # === Argument
   # db :: [String] database name that may contain wild card.
   # === Return
   # [Array of String] database list
   def list_dbs(db=nil)
-    query(db ? "show databases like '#{quote db}'" : "show databases").map(&:first)
+    db &&= db.gsub(/[\\\']/){"\\#{$&}"}
+    query(db ? "show databases like '#{db}'" : "show databases").map(&:first)
   end
 
   # Execute query string.
@@ -366,62 +318,44 @@ class Mysql
   # === Example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
   def query(str, &block)
-    unless block
-      ret = simple_query str, @query_with_result
-      return @query_with_result ? ret : self
-    end
-    simple_query str, false
-    while true
-      if @fields
-        res = store_result
-        block.call res
+    @fields = nil
+    begin
+      nfields = @protocol.query_command str
+      if nfields
+        @fields = @protocol.retr_fields nfields
+        @result_exist = true
+      else
+        @affected_rows, @insert_id, @server_status, @warning_count, @info =
+          @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
       end
-      break unless next_result
+      if block
+        while true
+          block.call store_result if @fields
+          break unless next_result
+        end
+        return self
+      end
+      if @query_with_result
+        return @fields ? store_result : nil
+      else
+        return self
+      end
+    rescue ServerError => e
+      @last_error = e
+      @sqlstate = e.sqlstate
+      raise
     end
-    self
   end
   alias real_query query
-
-  def simple_query(str, query_with_result)  # :nodoc:
-    @affected_rows = @insert_id = @server_status = @warning_count = 0
-    @protocol.synchronize do
-      begin
-        @protocol.reset
-        @protocol.send_packet Protocol::QueryPacket.new(@charset.convert(str))
-        res_packet = @protocol.read_result_packet
-        if res_packet.field_count == 0
-          @affected_rows, @insert_id, @server_status, @warning_count, @info =
-            res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
-          return nil
-        end
-        if res_packet.field_count.nil?   # LOAD DATA LOCAL INFILE
-          filename = res_packet.message
-          @protocol.write File.read(filename)
-          @protocol.write nil  # EOF mark
-          @protocol.read
-          @affected_rows, @insert_id, @server_status, @warning_count, @info =
-            res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
-          return nil
-        end
-        @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
-        @protocol.read_eof_packet
-        @result_exist = true
-        return store_result if query_with_result
-      rescue ServerError => e
-        @last_error = e
-        @sqlstate = e.sqlstate
-        raise
-      end
-    end
-  end
 
   # Get all data for last query if query_with_result is false.
   # === Return
   # [Mysql::Result]
   def store_result
     raise ClientError, 'invalid usage' unless @result_exist
-    res = SimpleQueryResult.new self, @fields
-    @server_status = res.server_status
+    res = SimpleQueryResult.new @fields
+    res.retr_all_records @protocol, @charset
+    @server_status = @protocol.server_status
     @result_exist = false
     res
   end
@@ -430,50 +364,51 @@ class Mysql
   # === Return
   # [Integer] Thread ID
   def thread_id
-    @thread_id
+    @protocol.thread_id
   end
 
-  # Use result of query. The result data is retrieved when you use Mysql::Result#fetch_row
+  # Use result of query. The result data is retrieved when you use Mysql::Result#fetch_row.
   def use_result
     store_result
   end
 
+  # Set server option.
+  # === Argument
+  # opt :: [Integer] Mysql::OPTION_MULTI_STATEMENTS_ON or Mysql::OPTION_MULTI_STATEMENTS_OFF
+  # === Return
+  # self
   def set_server_option(opt)
-    @protocol.synchronize do
-      @protocol.reset
-      @protocol.send_packet Protocol::SetOptionPacket.new(opt)
-      @protocol.read_eof_packet
-    end
+    @protocol.set_option_command opt
     self
   end
 
+  # true if multiple queries are specified and unexecuted queries exists.
   def more_results
     @server_status & SERVER_MORE_RESULTS_EXISTS != 0
   end
   alias more_results? more_results
 
+  # execute next query if multiple queries are specified.
+  # === Return
+  # true if next query exists.
   def next_result
     return false unless more_results
-    res_packet = @protocol.read_result_packet
-    if res_packet.field_count == 0
-      @affected_rows, @insert_id, @server_status, @warning_conut =
-        res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
-      @fields = nil
-    else
-      @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
-      @protocol.read_eof_packet
+    @fields = nil
+    nfields = @protocol.get_result
+    if nfields
+      @fields = @protocol.retr_fields nfields
+      @result_exist = true
     end
-    @result_exist = true
     return true
   end
 
   # Parse prepared-statement.
   # === Argument
-  # str   :: [String] query string
+  # str :: [String] query string
   # === Return
   # Mysql::Statement :: Prepared-statement object
   def prepare(str)
-    st = Stmt.new self
+    st = Stmt.new @protocol, @charset
     st.prepare str
     st
   end
@@ -482,7 +417,7 @@ class Mysql
   # === Return
   # Mysql::Stmt :: If block is not specified.
   def stmt_init
-    Stmt.new self
+    Stmt.new @protocol, @charset
   end
 
   # Returns Mysql::Result object that is empty.
@@ -493,25 +428,13 @@ class Mysql
   # === Return
   # [Mysql::Result]
   def list_fields(table, field=nil)
-    @protocol.synchronize do
-      begin
-        @protocol.reset
-        @protocol.send_packet Protocol::FieldListPacket.new(table, field)
-        fields = []
-        until Protocol.eof_packet?(data = @protocol.read)
-          fields.push Field.new(Protocol::FieldPacket.parse(data))
-        end
-        res = Result.allocate
-        res.instance_variable_set(:@fields, fields)
-        res.instance_variable_set(:@records, [])
-        res.instance_variable_set(:@index, 0)
-        res.instance_variable_set(:@field_index, 0)
-        return res
-      rescue ServerError => e
-        @last_error = e
-        @sqlstate = e.sqlstate
-        raise
-      end
+    begin
+      fields = @protocol.field_list_command table, field
+      return Result.new fields
+    rescue ServerError => e
+      @last_error = e
+      @sqlstate = e.sqlstate
+      raise
     end
   end
 
@@ -519,11 +442,7 @@ class Mysql
   # === Return
   # [Mysql::Result]
   def list_processes
-    @protocol.reset
-    @protocol.send_packet Protocol::ProcessInfoPacket.new
-    field_count = Protocol.lcb2int!(@protocol.read)
-    @fields = Array.new(field_count).map{Field.new @protocol.read_field_packet}
-    @protocol.read_eof_packet
+    @fields = @protocol.process_info_command
     @result_exist = true
     store_result
   end
@@ -537,16 +456,15 @@ class Mysql
   # === Return
   # [Array of String]
   def list_tables(table=nil)
-    query(table ? "show tables like '#{quote table}'" : "show tables").map(&:first)
+    q = table ? "show tables like '#{quote table}'" : "show tables"
+    query(q).map(&:first)
   end
 
   # Check whether the  connection is available.
   # === Return
   # self
   def ping
-    @protocol.reset
-    @protocol.send_packet Protocol::PingPacket.new
-    @protocol.read
+    @protocol.ping_command
     self
   end
 
@@ -556,9 +474,7 @@ class Mysql
   # === Return
   # self
   def refresh(op)
-    @protocol.reset
-    @protocol.send_packet Protocol::RefreshPacket.new(op)
-    @protocol.read
+    @protocol.refresh_command op
     self
   end
 
@@ -577,121 +493,44 @@ class Mysql
     self
   end
 
-  def shutdown(level)
-    raise 'not implemented'
+  # shutdown server.
+  # === Return
+  # self
+  def shutdown(level=0)
+    @protocol.shutdown_command level
+    self
   end
 
+  # === Return
+  # [String] statistics message
   def stat
-    @protocol.reset
-    @protocol.send_packet Protocol::StatisticsPacket.new
-    @protocol.read
+    @protocol.statistics_command
   end
 
+  # Commit transaction
+  # === Return
+  # self
   def commit
     query 'commit'
     self
   end
 
+  # Rollback transaction
+  # === Return
+  # self
   def rollback
     query 'rollback'
     self
   end
 
+  # Set autocommit mode
+  # === Argument
+  # flag :: [true / false]
+  # === Return
+  # self
   def autocommit(flag)
     query "set autocommit=#{flag ? 1 : 0}"
     self
-  end
-
-  private
-
-  # analyze argument and returns connection-parameter and option.
-  #
-  # connection-parameter's key :: :host, :user, :password, :db, :port, :socket, :flag
-  # === Return
-  # Hash :: connection parameters
-  # Hash :: option {:optname => value, ...}
-  def conninfo(*args)
-    paramkeys = [:host, :user, :password, :db, :port, :socket, :flag]
-    opt = {}
-    if args.empty?
-      param = {}
-    elsif args.size == 1 and args.first.is_a? Hash
-      arg = args.first.dup
-      param = {}
-      [:host, :user, :password, :db, :port, :socket, :flag].each do |k|
-        param[k] = arg.delete k if arg.key? k
-      end
-      opt = arg
-    else
-      if args.last.is_a? Hash
-        args = args.dup
-        opt = args.pop
-      end
-      if args.size > 1 || args.first.nil? || args.first.is_a?(String) && args.first !~ /\Amysql:/
-        host, user, password, db, port, socket, flag = args
-        param = {:host=>host, :user=>user, :password=>password, :db=>db, :port=>port, :socket=>socket, :flag=>flag}
-      elsif args.first.is_a? Hash
-        param = args.first.dup
-        param.keys.each do |k|
-          unless paramkeys.include? k
-            raise ArgumentError, "Unknown parameter: #{k.inspect}"
-          end
-        end
-      else
-        if args.first =~ /\Amysql:/
-          uri = URI.parse args.first
-        elsif args.first.is_a? URI
-          uri = args.first
-        else
-          raise ArgumentError, "Invalid argument: #{args.first.inspect}"
-        end
-        unless uri.scheme == "mysql"
-          raise ArgumentError, "Invalid scheme: #{uri.scheme}"
-        end
-        param = {:host=>uri.host, :user=>uri.user, :password=>uri.password, :port=>uri.port||MYSQL_TCP_PORT}
-        param[:db] = uri.path.split(/\/+/).reject{|a|a.empty?}.first
-        if uri.query
-          uri.query.split(/\&/).each do |a|
-            k, v = a.split(/\=/, 2)
-            if k == "socket"
-              param[:socket] = v
-            elsif k == "flag"
-              param[:flag] = v.to_i
-            else
-              opt[k.intern] = v
-            end
-          end
-        end
-      end
-    end
-    param[:flag] = 0 unless param.key? :flag
-    opt.keys.each do |k|
-      if OPT2FLAG.key? k and opt[k]
-        param[:flag] |= OPT2FLAG[k]
-        next
-      end
-      unless OPTIONS.key? k
-        raise ArgumentError, "Unknown option: #{k.inspect}"
-      end
-      opt[k] = opt[k].to_i if OPTIONS[k] == Integer
-    end
-    return param, opt
-  end
-
-  def set_option(opt)
-    opt.each do |k,v|
-      raise ClientError, "unknown option: #{k.inspect}" unless OPTIONS.key? k
-      type = OPTIONS[k]
-      if type.is_a? Class
-        raise ClientError, "invalid value for #{k.inspect}: #{v.inspect}" unless v.is_a? type
-      end
-    end
-
-    charset = opt[:charset] if opt.key? :charset
-    @connect_timeout = opt[:connect_timeout] || @connect_timeout
-    @init_command = opt[:init_command] || @init_command
-    @read_timeout = opt[:read_timeout] || @read_timeout
-    @write_timeout = opt[:write_timeout] || @write_timeout
   end
 
   # Field class
@@ -711,7 +550,7 @@ class Mysql
     attr_accessor :max_length   # maximum width of the field for the result set
 
     # === Argument
-    # packet :: [Protocol::FieldPacket]
+    # [Protocol::FieldPacket]
     def initialize(packet)
       @db, @table, @org_table, @name, @org_name, @charsetnr, @length, @type, @flags, @decimals, @default =
         packet.db, packet.table, packet.org_table, packet.name, packet.org_name, packet.charsetnr, packet.length, packet.type, packet.flags, packet.decimals, packet.default
@@ -764,12 +603,16 @@ class Mysql
 
     attr_reader :fields
 
-    def initialize(mysql, fields)
+    def initialize(fields)
       @fields = fields
       @fieldname_with_table = nil
       @index = 0
-      @records = recv_all_records mysql.protocol, fields, mysql.charset
+      @records = []
       @field_index = 0
+    end
+
+    def retr_all_records(protocol, charset)
+      @records = recv_all_records protocol, @fields, charset
     end
 
     def free
@@ -874,31 +717,21 @@ class Mysql
 
   # Result set for simple query
   class SimpleQueryResult < Result
-
-    attr_reader :server_status
-
     private
 
     def recv_all_records(protocol, fields, charset)
-      ret = []
-      while true
-        data = protocol.read
-        break if Protocol.eof_packet? data
-        rec = fields.map do |f|
-          v = Protocol.lcs2str! data
+      ret = protocol.retr_all_records fields
+      ret.each do |rec|
+        rec.zip(fields) do |v, f|
           f.max_length = [v ? v.length : 0, f.max_length || 0].max
-          v
         end
-        ret.push rec
       end
-      @server_status = data[3].ord
       ret
     end
   end
 
   # Result set for prepared statement
   class StatementResult < Result
-
     private
 
     def recv_all_records(protocol, fields, charset)
@@ -942,17 +775,14 @@ class Mysql
     def self.finalizer(protocol, statement_id)
       proc do
         Thread.new do
-          protocol.synchronize do
-            protocol.reset
-            protocol.send_packet Protocol::StmtClosePacket.new(statement_id)
-          end
+          protocol.stmt_close_command statement_id
         end
       end
     end
 
-    def initialize(mysql)
-      @mysql = mysql
-      @protocol = mysql.protocol
+    def initialize(protocol, charset)
+      @protocol = protocol
+      @charset = charset
       @statement_id = nil
       @affected_rows = @insert_id = @server_status = @warning_count = 0
       @sqlstate = "00000"
@@ -966,30 +796,13 @@ class Mysql
     # self
     def prepare(str)
       close
-      @protocol.synchronize do
-        begin
-          @sqlstate = "00000"
-          @protocol.reset
-          @protocol.send_packet Protocol::PreparePacket.new(@mysql.charset.convert(str))
-          res_packet = @protocol.read_prepare_result_packet
-          if res_packet.param_count > 0
-            res_packet.param_count.times{@protocol.read}   # skip parameter packet
-            @protocol.read_eof_packet
-          end
-          if res_packet.field_count > 0
-            fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
-            @protocol.read_eof_packet
-          else
-            fields = []
-          end
-          @statement_id = res_packet.statement_id
-          @param_count = res_packet.param_count
-          @fields = fields
-        rescue ServerError => e
-          @last_error = e
-          @sqlstate = e.sqlstate
-          raise
-        end
+      begin
+        @sqlstate = "00000"
+        @statement_id, @param_count, @fields = @protocol.stmt_prepare_command(str)
+      rescue ServerError => e
+        @last_error = e
+        @sqlstate = e.sqlstate
+        raise
       end
       ObjectSpace.define_finalizer(self, self.class.finalizer(@protocol, @statement_id))
       self
@@ -1001,42 +814,31 @@ class Mysql
     def execute(*values)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count
-      values = values.map{|v| @mysql.charset.convert v}
-      @protocol.synchronize do
-        begin
-          @sqlstate = "00000"
-          @protocol.reset
-          @protocol.send_packet Protocol::ExecutePacket.new(@statement_id, CURSOR_TYPE_NO_CURSOR, values)
-          res_packet = @protocol.read_result_packet
-          raise ProtocolError, "invalid field_count" unless res_packet.field_count == @fields.length
-          @fieldname_with_table = nil
-          if res_packet.field_count == 0
-            @affected_rows, @insert_id, @server_status, @warning_conut =
-              res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count
-            @result = nil
-            return self
-          end
-          @fields = Array.new(res_packet.field_count).map{Field.new @protocol.read_field_packet}
-          @protocol.read_eof_packet
-          @result = StatementResult.new(@mysql, @fields)
-          return self
-        rescue ServerError => e
-          @last_error = e
-          @sqlstate = e.sqlstate
-          raise
+      values = values.map{|v| @charset.convert v}
+      begin
+        @sqlstate = "00000"
+        @fieldname_with_table = nil
+        nfields = @protocol.stmt_execute_command @statement_id, values
+        if nfields
+          @fields = @protocol.retr_fields nfields
+          @result = StatementResult.new @fields
+          @result.retr_all_records @protocol, @charset
+        else
+          @affected_rows, @insert_id, @server_status, @warning_count, @info =
+            @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
         end
+        return self
+      rescue ServerError => e
+        @last_error = e
+        @sqlstate = e.sqlstate
+        raise
       end
     end
 
     def close
       ObjectSpace.undefine_finalizer(self)
-      @protocol.synchronize do
-        @protocol.reset
-        if @statement_id
-          @protocol.send_packet Protocol::StmtClosePacket.new(@statement_id)
-          @statement_id = nil
-        end
-      end
+      @protocol.stmt_close_command @statement_id if @statement_id
+      @statement_id = nil
     end
 
     def fetch
@@ -1139,11 +941,7 @@ class Mysql
 
     def result_metadata
       return nil if @fields.empty?
-      res = Result.allocate
-      res.instance_variable_set :@mysql, @mysql
-      res.instance_variable_set :@fields, @fields
-      res.instance_variable_set :@records, []
-      res
+      Result.new @fields
     end
   end
 
