@@ -219,6 +219,255 @@ class Mysql
       @sock.close
     end
 
+    # initial negotiate and authenticate.
+    # === Argument
+    # user    :: [String / nil] username
+    # passwd  :: [String / nil] password
+    # db      :: [String / nil] default database name. nil: no default.
+    # flag    :: [Integer] client flag
+    # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
+    def authenticate(user, passwd, db, flag, charset)
+      synchronize do
+        init_packet = InitialPacket.parse read
+        @server_info = init_packet.server_version
+        @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+        @thread_id = init_packet.thread_id
+        client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+        client_flags |= CLIENT_CONNECT_WITH_DB if db
+        client_flags |= flag
+        @charset = charset
+        unless @charset
+          @charset = Charset.by_number(init_packet.server_charset)
+          @charset.encoding       # raise error if unsupported charset
+        end
+        netpw = encrypt_password passwd, init_packet.scramble_buff
+        write AuthenticationPacket.serialize(client_flags, 1024**3, @charset.number, user, netpw, db)
+        read            # skip OK packet
+      end
+    end
+
+    # Quit command
+    def quit_command
+      synchronize do
+        reset
+        write [COM_QUIT].pack("C")
+        close
+      end
+    end
+
+    # Query command
+    # === Argument
+    # query :: [String] query string
+    # === Return
+    # [Integer / nil] number of fields of results. nil if no results.
+    def query_command(query)
+      synchronize do
+        reset
+        write [COM_QUERY, @charset.convert(query)].pack("Ca*")
+        get_result
+      end
+    end
+
+    # get result of query.
+    # === Return
+    # [integer / nil] number of fields of results. nil if no results.
+    def get_result
+      res_packet = ResultPacket.parse read
+      if res_packet.field_count.to_i > 0  # result data exists
+        return res_packet.field_count
+      end
+      if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
+        filename = res_packet.message
+        File.open(filename){|f| write f}
+        write nil  # EOF mark
+        read
+      end
+      @affected_rows, @insert_id, @server_status, @warning_count, @message =
+        res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
+      return nil
+    end
+
+    # Retrieve n fields
+    # === Argument
+    # n :: [Integer] number of fields
+    # === Return
+    # [Array of Mysql::Field] field list
+    def retr_fields(n)
+      fields = n.times.map{Field.new FieldPacket.parse(read)}
+      read_eof_packet
+      fields
+    end
+
+    # Retrieve all records for simple query
+    # === Argument
+    # fields :: [Array of Mysql::Field] field list
+    # === Return
+    # [Array of Array of String] all records
+    def retr_all_records(fields)
+      all_recs = []
+      until self.class.eof_packet?(data = read)
+        all_recs.push fields.map{self.class.lcs2str! data}
+      end
+      @server_status = data[3].ord
+      all_recs
+    end
+
+    # Field list command
+    # === Argument
+    # table :: [String] table name.
+    # field :: [String / nil] field name that may contain wild card.
+    # === Return
+    # [Array of Field] field list
+    def field_list_command(table, field)
+      synchronize do
+        reset
+        write [COM_FIELD_LIST, table, 0, field].pack("Ca*Ca*")
+        fields = []
+        until self.class.eof_packet?(data = read)
+          fields.push Field.new(FieldPacket.parse(data))
+        end
+        return fields
+      end
+    end
+
+    # Process info command
+    # === Return
+    # [Array of Field] field list
+    def process_info_command
+      synchronize do
+        reset
+        write [COM_PROCESS_INFO].pack("C")
+        field_count = self.class.lcb2int!(read)
+        fields = field_count.times.map{Field.new FieldPacket.parse(read)}
+        read_eof_packet
+        return fields
+      end
+    end
+
+    # Ping command
+    def ping_command
+      simple_command [COM_PING].pack("C")
+    end
+
+    # Kill command
+    def kill_command(pid)
+      simple_command [COM_PROCESS_KILL, pid].pack("CV")
+    end
+
+    # Refresh command
+    def refresh_command(op)
+      simple_command [COM_REFRESH, op].pack("CC")
+    end
+
+    # Set option command
+    def set_option_command(opt)
+      simple_command [COM_SET_OPTION, opt].pack("Cv")
+    end
+
+    # Shutdown command
+    def shutdown_command(level)
+      simple_command [COM_SHUTDOWN, level].pack("CC")
+    end
+
+    # Statistics command
+    def statistics_command
+      simple_command [COM_STATISTICS].pack("C")
+    end
+
+    # Stmt prepare command
+    # === Argument
+    # stmt :: [String] prepared statement
+    # === Return
+    # [Integer] statement id
+    # [Integer] number of parameters
+    # [Array of Field] field list
+    def stmt_prepare_command(stmt)
+      synchronize do
+        reset
+        write [COM_STMT_PREPARE, charset.convert(stmt)].pack("Ca*")
+        res_packet = PrepareResultPacket.parse read
+        if res_packet.param_count > 0
+          res_packet.param_count.times{read}    # skip parameter packet
+          read_eof_packet
+        end
+        if res_packet.field_count > 0
+          fields = res_packet.field_count.times.map{Field.new FieldPacket.parse(read)}
+          read_eof_packet
+        else
+          fields = []
+        end
+        return res_packet.statement_id, res_packet.param_count, fields
+      end
+    end
+
+    # Stmt execute command
+    # === Argument
+    # stmt_id :: [Integer] statement id
+    # values  :: [Array] parameters
+    # === Return
+    # [Integer] number of fields
+    def stmt_execute_command(stmt_id, values)
+      synchronize do
+        reset
+        write ExecutePacket.serialize(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
+        return get_result
+      end
+    end
+
+    # Retrieve all records for prepared statement
+    # === Argument
+    # fields  :: [Array of Mysql::Fields] field list
+    # charset :: [Mysql::Charset]
+    # === Return
+    # [Array of Array of Object] all records
+    def stmt_retr_all_records(fields, charset)
+      all_recs = []
+      until self.class.eof_packet?(data = read)
+        all_recs.push stmt_parse_record_packet(data, fields, charset)
+      end
+      all_recs
+    end
+
+    # Stmt close command
+    # === Argument
+    # stmt_id :: [Integer] statement id
+    def stmt_close_command(stmt_id)
+      synchronize do
+        reset
+        write [COM_STMT_CLOSE, stmt_id].pack("CV")
+      end
+    end
+
+    private
+
+    # Parse statement result packet
+    # === Argument
+    # data    :: [String]
+    # fields  :: [Array of Fields]
+    # charset :: [Mysql::Charset]
+    # === Return
+    # [Array of Object] one record
+    def stmt_parse_record_packet(data, fields, charset)
+      data.slice!(0)  # skip first byte
+      null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("b*").first
+      rec = fields.each_with_index.map do |f, i|
+        if null_bit_map[i+2] == ?1
+          nil
+        else
+          unsigned = f.flags & Field::UNSIGNED_FLAG != 0
+          v = self.class.net2value(data, f.type, unsigned)
+          if v.is_a? Numeric or v.is_a? Mysql::Time
+            v
+          elsif f.type == Field::TYPE_BIT or f.flags & Field::BINARY_FLAG != 0
+            Charset.to_binary(v)
+          else
+            charset.force_encoding(v)
+          end
+        end
+      end
+      rec
+    end
+
     def synchronize
       @mutex.synchronize do
         return yield
@@ -232,9 +481,9 @@ class Mysql
 
     # Read one packet data
     # === Return
-    # String
+    # [String] packet data
     # === Exception
-    # ProtocolError :: invalid packet sequence number
+    # [ProtocolError] invalid packet sequence number
     def read
       ret = ""
       len = nil
@@ -270,7 +519,7 @@ class Mysql
 
     # Write one packet data
     # === Argument
-    # data [String / IO] :: packet data. If data is nil, write empty packet.
+    # data :: [String / IO] packet data. If data is nil, write empty packet.
     def write(data)
       begin
         @sock.sync = false
@@ -303,268 +552,28 @@ class Mysql
       end
     end
 
-    # Send one packet
-    # === Argument
-    # packet :: [*Packet]
-    def send_packet(packet)
-      write packet.serialize
-    end
-
     # Read EOF packet
     # === Exception
-    # ProtocolError :: packet is not EOF
+    # [ProtocolError] packet is not EOF
     def read_eof_packet
       data = read
       raise ProtocolError, "packet is not EOF" unless self.class.eof_packet? data
     end
 
-    # Read initial packet
-    # === Return
-    # InitialPacket ::
-    # === Exception
-    # ProtocolError :: invalid packet
-    def read_initial_packet
-      InitialPacket.parse read
-    end
-
-    # Read result packet
-    # === Return
-    # ResultPacket ::
-    def read_result_packet
-      ResultPacket.parse read
-    end
-
-    # Read field packet
-    # === Return
-    # FieldPacket :: packet data
-    # === Exception
-    # ProtocolError :: invalid packet
-    def read_field_packet
-      FieldPacket.parse read
-    end
-
-    # Read prepare result packet
-    # === Return
-    # PrepareResultPacket ::
-    # === Exception
-    # ProtocolError :: invalid packet
-    def read_prepare_result_packet
-      PrepareResultPacket.parse read
-    end
-
     # Send simple command
     # === Argument
-    # packet :: TxPacket class
-    # args   :: packet parameter
+    # packet :: [String] packet data
     # === Return
     # [String] received data
-    def simple_command(packet, *args)
+    def simple_command(packet)
       synchronize do
         reset
-        send_packet packet.new(*args)
+        write packet
         read
       end
     end
 
-    # initial negotiate and authenticate.
-    # === Argument
-    # user    :: [String / nil] username
-    # passwd  :: [String / nil] password
-    # db      :: [String / nil] default database name. nil: no default.
-    # flag    :: [Integer] client flag
-    # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
-    def authenticate(user, passwd, db, flag, charset)
-      synchronize do
-        init_packet = read_initial_packet
-        @server_info = init_packet.server_version
-        @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
-        @thread_id = init_packet.thread_id
-        client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
-        client_flags |= CLIENT_CONNECT_WITH_DB if db
-        client_flags |= flag
-        @charset = charset
-        unless @charset
-          @charset = Charset.by_number(init_packet.server_charset)
-          @charset.encoding       # raise error if unsupported charset
-        end
-        netpw = encrypt_password passwd, init_packet.scramble_buff
-        auth_packet = Protocol::AuthenticationPacket.new client_flags, 1024**3, @charset.number, user, netpw, db
-        send_packet auth_packet
-        read            # skip OK packet
-      end
-    end
-
-    # Quit command
-    def quit_command
-      synchronize do
-        reset
-        send_packet QuitPacket.new
-        close
-      end
-    end
-
-    # Query command
-    # === Argument
-    # query :: [String] query string
-    # === Return
-    # [Integer / nil] number of fields of results. nil if no results.
-    def query_command(query)
-      synchronize do
-        reset
-        send_packet QueryPacket.new(@charset.convert(query))
-        get_result
-      end
-    end
-
-    # get result of query.
-    # === Return
-    # [integer / nil] number of fields of results. nil if no results.
-    def get_result
-      res_packet = read_result_packet
-      if res_packet.field_count.to_i > 0  # result data exists
-        return res_packet.field_count
-      end
-      if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
-        filename = res_packet.message
-        File.open(filename){|f| write f}
-        write nil  # EOF mark
-        read
-      end
-      @affected_rows, @insert_id, @server_status, @warning_count, @message =
-        res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
-      return nil
-    end
-
-    def retr_fields(n)
-      fields = n.times.map{Field.new read_field_packet}
-      read_eof_packet
-      fields
-    end
-
-    def retr_all_records(fields)
-      all_recs = []
-      until self.class.eof_packet?(data = read)
-        all_recs.push fields.map{self.class.lcs2str! data}
-      end
-      @server_status = data[3].ord
-      all_recs
-    end
-
-    # Field list command
-    # === Argument
-    # table :: [String] table name.
-    # field :: [String / nil] field name that may contain wild card.
-    # === Return
-    # [Array of Field] field list
-    def field_list_command(table, field)
-      synchronize do
-        reset
-        send_packet FieldListPacket.new(table, field)
-        fields = []
-        until self.class.eof_packet?(data = read)
-          fields.push Field.new(FieldPacket.parse(data))
-        end
-        return fields
-      end
-    end
-
-    # Process info command
-    # === Return
-    # [Array of Field] field list
-    def process_info_command
-      synchronize do
-        reset
-        send_packet ProcessInfoPacket.new
-        field_count = self.class.lcb2int!(read)
-        fields = field_count.times.map{Field.new read_field_packet}
-        read_eof_packet
-        return fields
-      end
-    end
-
-    # Ping command
-    def ping_command
-      simple_command PingPacket
-    end
-
-    # Kill command
-    def kill_command(pid)
-      simple_command ProcessKillPacket, pid
-    end
-
-    # Refresh command
-    def refresh_command(op)
-      simple_command RefreshPacket, op
-    end
-
-    # Set option command
-    def set_option_command(opt)
-      simple_command SetOptionPacket, opt
-    end
-
-    # Shutdown command
-    def shutdown_command(level)
-      simple_command ShutdownPacket, level
-    end
-
-    # Statistics command
-    def statistics_command
-      simple_command StatisticsPacket
-    end
-
-    # Stmt prepare command
-    # === Argument
-    # stmt :: [String] prepared statement
-    # === Return
-    # [Integer] statement id
-    # [Integer] number of parameters
-    # [Array of Field] field list
-    def stmt_prepare_command(stmt)
-      synchronize do
-        reset
-        send_packet PreparePacket.new(charset.convert(stmt))
-        res_packet = read_prepare_result_packet
-        if res_packet.param_count > 0
-          res_packet.param_count.times{read}    # skip parameter packet
-          read_eof_packet
-        end
-        if res_packet.field_count > 0
-          fields = res_packet.field_count.times.map{Field.new read_field_packet}
-          read_eof_packet
-        else
-          fields = []
-        end
-        return res_packet.statement_id, res_packet.param_count, fields
-      end
-    end
-
-    # Stmt execute command
-    # === Argument
-    # stmt_id :: [Integer] statement id
-    # values  :: [Array] parameters
-    # === Return
-    # [Integer] number of fields
-    def stmt_execute_command(stmt_id, values)
-      synchronize do
-        reset
-        send_packet ExecutePacket.new(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
-        return get_result
-      end
-    end
-
-    # Stmt close command
-    # === Argument
-    # stmt_id :: [Integer] statement id
-    def stmt_close_command(stmt_id)
-      synchronize do
-        reset
-        send_packet StmtClosePacket.new(stmt_id)
-      end
-    end
-
-    private
-
-    # encrypt password
+    # Encrypt password
     # === Argument
     # plain    :: [String] plain password.
     # scramble :: [String] scramble code from initial packet.
@@ -577,16 +586,8 @@ class Mysql
       return hash_stage1.unpack("C*").zip(Digest::SHA1.digest(scramble+hash_stage2).unpack("C*")).map{|a,b| a^b}.pack("C*")
     end
 
-    # client->server packet base class
-    class TxPacket
-    end
-
-    # server->client packet base class
-    class RxPacket
-    end
-
     # Initial packet
-    class InitialPacket < RxPacket
+    class InitialPacket
       def self.parse(data)
         protocol_version, server_version, thread_id, scramble_buff, f0,
         server_capabilities, server_charset, server_status, f1,
@@ -598,63 +599,15 @@ class Mysql
         self.new protocol_version, server_version, thread_id, server_capabilities, server_charset, server_status, scramble_buff
       end
 
-      attr_accessor :protocol_version, :server_version, :thread_id, :server_capabilities, :server_charset, :server_status, :scramble_buff
+      attr_reader :protocol_version, :server_version, :thread_id, :server_capabilities, :server_charset, :server_status, :scramble_buff
 
       def initialize(*args)
         @protocol_version, @server_version, @thread_id, @server_capabilities, @server_charset, @server_status, @scramble_buff = args
       end
-
-      def crypt_password(plain)
-        return "" if plain.nil? or plain.empty?
-        hash_stage1 = Digest::SHA1.digest plain
-        hash_stage2 = Digest::SHA1.digest hash_stage1
-        return hash_stage1.unpack("C*").zip(Digest::SHA1.digest(@scramble_buff+hash_stage2).unpack("C*")).map{|a,b| a^b}.pack("C*")
-      end
-    end
-
-    # Authentication packet
-    class AuthenticationPacket < TxPacket
-      attr_accessor :client_flags, :max_packet_size, :charset_number, :username, :scrambled_password, :databasename
-
-      def initialize(*args)
-        @client_flags, @max_packet_size, @charset_number, @username, @scrambled_password, @databasename = args
-      end
-
-      def serialize
-        [
-          client_flags,
-          max_packet_size,
-          Protocol.lcb(charset_number),
-          "",                   # always 0x00 * 23
-          username,
-          Protocol.lcs(scrambled_password),
-          databasename
-        ].pack("VVa*a23Z*A*Z*")
-      end
-    end
-
-    # Quit packet
-    class QuitPacket < TxPacket
-      def serialize
-        [COM_QUIT].pack("C")
-      end
-    end
-
-    # Query packet
-    class QueryPacket < TxPacket
-      attr_accessor :query
-
-      def initialize(*args)
-        @query, = args
-      end
-
-      def serialize
-        [COM_QUERY, query].pack("Ca*")
-      end
     end
 
     # Result packet
-    class ResultPacket < RxPacket
+    class ResultPacket
       def self.parse(data)
         field_count = Protocol.lcb2int! data
         if field_count == 0
@@ -669,7 +622,7 @@ class Mysql
         end
       end
 
-      attr_accessor :field_count, :affected_rows, :insert_id, :server_status, :warning_count, :message
+      attr_reader :field_count, :affected_rows, :insert_id, :server_status, :warning_count, :message
 
       def initialize(*args)
         @field_count, @affected_rows, @insert_id, @server_status, @warning_count, @message = args
@@ -677,7 +630,7 @@ class Mysql
     end
 
     # Field packet
-    class FieldPacket < RxPacket
+    class FieldPacket
       def self.parse(data)
         first = Protocol.lcs2str! data
         db = Protocol.lcs2str! data
@@ -691,28 +644,15 @@ class Mysql
         return self.new(db, table, org_table, name, org_name, charsetnr, length, type, flags, decimals, default)
       end
 
-      attr_accessor :db, :table, :org_table, :name, :org_name, :charsetnr, :length, :type, :flags, :decimals, :default
+      attr_reader :db, :table, :org_table, :name, :org_name, :charsetnr, :length, :type, :flags, :decimals, :default
 
       def initialize(*args)
         @db, @table, @org_table, @name, @org_name, @charsetnr, @length, @type, @flags, @decimals, @default = args
       end
     end
 
-    # Prepare packet
-    class PreparePacket < TxPacket
-      attr_accessor :query
-
-      def initialize(*args)
-        @query, = args
-      end
-
-      def serialize
-        [COM_STMT_PREPARE, query].pack("Ca*")
-      end
-    end
-
     # Prepare result packet
-    class PrepareResultPacket < RxPacket
+    class PrepareResultPacket
       def self.parse(data)
         raise ProtocolError, "invalid packet" unless data.slice!(0) == ?\0
         statement_id, field_count, param_count, f, warning_count = data.unpack("VvvCv")
@@ -720,22 +660,31 @@ class Mysql
         self.new statement_id, field_count, param_count, warning_count
       end
 
-      attr_accessor :statement_id, :field_count, :param_count, :warning_count
+      attr_reader :statement_id, :field_count, :param_count, :warning_count
 
       def initialize(*args)
         @statement_id, @field_count, @param_count, @warning_count = args
       end
     end
 
-    # Execute packet
-    class ExecutePacket < TxPacket
-      attr_accessor :statement_id, :cursor_type, :values
-
-      def initialize(*args)
-        @statement_id, @cursor_type, @values = args
+    # Authentication packet
+    class AuthenticationPacket
+      def self.serialize(client_flags, max_packet_size, charset_number, username, scrambled_password, databasename)
+        [
+          client_flags,
+          max_packet_size,
+          Protocol.lcb(charset_number),
+          "",                   # always 0x00 * 23
+          username,
+          Protocol.lcs(scrambled_password),
+          databasename
+        ].pack("VVa*a23Z*A*Z*")
       end
+    end
 
-      def serialize
+    # Execute packet
+    class ExecutePacket
+      def self.serialize(statement_id, cursor_type, values)
         nbm = null_bitmap values
         netvalues = ""
         types = values.map do |v|
@@ -746,12 +695,10 @@ class Mysql
         [Mysql::COM_STMT_EXECUTE, statement_id, cursor_type, 1, nbm, 1, types.pack("v*"), netvalues].pack("CVCVa*Ca*a*")
       end
 
-      private
-
       # make null bitmap
       #
       # If values is [1, nil, 2, 3, nil] then returns "\x12"(0b10010).
-      def null_bitmap(values)
+      def self.null_bitmap(values)
         bitmap = values.enum_for(:each_slice,8).map do |vals|
           vals.reverse.inject(0){|b, v|(b << 1 | (v ? 0 : 1))}
         end
@@ -759,118 +706,5 @@ class Mysql
       end
 
     end
-
-    # Fetch packet
-    class FetchPacket < TxPacket
-      attr_accessor :statement_id, :fetch_length
-
-      def initialize(*args)
-        @statement_id, @fetch_length = args
-      end
-
-      def serialize
-        [Mysql::COM_STMT_FETCH, statement_id, fetch_length].pack("CVV")
-      end
-    end
-
-    # Stmt close packet
-    class StmtClosePacket < TxPacket
-      attr_accessor :statement_id
-
-      def initialize(*args)
-        @statement_id, = args
-      end
-
-      def serialize
-        [Mysql::COM_STMT_CLOSE, statement_id].pack("CV")
-      end
-    end
-
-    class FieldListPacket < TxPacket
-      def initialize(table, field=nil)
-        @table, @field = table, field
-      end
-
-      def serialize
-        [Mysql::COM_FIELD_LIST, @table, 0, @field].pack("Ca*Ca*")
-      end
-    end
-
-    class SetOptionPacket < TxPacket
-      def initialize(*args)
-        @option, = args
-      end
-
-      def serialize
-        [Mysql::COM_SET_OPTION, @option].pack("Cv")
-      end
-    end
-
-    class CreateDbPacket < TxPacket
-      def initialize(db)
-        @db = db
-      end
-
-      def serialize
-        [Mysql::COM_CREATE_DB, @db].pack("Ca*")
-      end
-    end
-
-    class DropDbPacket < TxPacket
-      def initialize(db)
-        @db = db
-      end
-
-      def serialize
-        [Mysql::COM_DROP_DB, @db].pack("Ca*")
-      end
-    end
-
-    class RefreshPacket < TxPacket
-      def initialize(opt)
-        @opt = opt
-      end
-
-      def serialize
-        [Mysql::COM_REFRESH, @opt].pack("CC")
-      end
-    end
-
-    class ShutdownPacket < TxPacket
-      def initialize(level)
-        @level = level
-      end
-      def serialize
-        [Mysql::COM_SHUTDOWN, level].pack("CC")
-      end
-    end
-
-    class StatisticsPacket < TxPacket
-      def serialize
-        [Mysql::COM_STATISTICS].pack("C")
-      end
-    end
-
-    class ProcessInfoPacket < TxPacket
-      def serialize
-        [Mysql::COM_PROCESS_INFO].pack("C")
-      end
-    end
-
-    class ProcessKillPacket < TxPacket
-      def initialize(pid)
-        @pid = pid
-      end
-      def serialize
-        [Mysql::COM_PROCESS_KILL, @pid].pack("CV")
-      end
-    end
-
-    class PingPacket < TxPacket
-      def serialize
-        [Mysql::COM_PING].pack("C")
-      end
-    end
-
   end
 end

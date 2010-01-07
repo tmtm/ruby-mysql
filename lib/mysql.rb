@@ -2,7 +2,6 @@
 # mailto:tommy@tmtm.org
 
 require "enumerator"
-require "uri"
 
 # MySQL connection class.
 # === Example
@@ -27,7 +26,6 @@ class Mysql
   attr_reader :affected_rows         # number of affected records by insert/update/delete.
   attr_reader :warning_count         # number of warnings for previous query
   attr_reader :protocol              # :nodoc:
-  attr_reader :sqlstate              # sqlstate for latest query
 
   attr_accessor :query_with_result
   attr_accessor :reconnect           # if true, reconnect automaticalley
@@ -92,7 +90,6 @@ class Mysql
     @affected_rows = nil
     @warning_count = 0
     @sqlstate = "00000"
-    @connected = false
     @query_with_result = true
     @reconnect = false
     @host_info = nil
@@ -227,7 +224,7 @@ class Mysql
     @charset.name
   end
 
-  # === Integer
+  # === Return
   # [Integer] last error number
   def errno
     @last_error && @last_error.errno
@@ -237,6 +234,12 @@ class Mysql
   # [String] last error message
   def error
     @last_error && @last_error.error
+  end
+
+  # === Return
+  # [String] sqlstate for last error
+  def sqlstate
+    @last_error ? @last_error.sqlstate : "00000"
   end
 
   # === Return
@@ -314,7 +317,7 @@ class Mysql
   # nil :: If the query does not return result set.
   # self :: If block is specified.
   # === Block parameter
-  # [ Mysql::Result ]
+  # [Mysql::Result]
   # === Example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
   def query(str, &block)
@@ -353,8 +356,7 @@ class Mysql
   # [Mysql::Result]
   def store_result
     raise ClientError, 'invalid usage' unless @result_exist
-    res = SimpleQueryResult.new @fields
-    res.retr_all_records @protocol, @charset
+    res = Result.new @fields, @protocol
     @server_status = @protocol.server_status
     @result_exist = false
     res
@@ -598,31 +600,36 @@ class Mysql
   end
 
   # Result set
-  class Result
+  class ResultBase
     include Enumerable
 
     attr_reader :fields
 
+    # === Argument
+    # fields :: [Array of Mysql::Field]
     def initialize(fields)
       @fields = fields
+      @field_index = 0             # index of field
+      @records = []                # all records
+      @index = 0                   # index of record
       @fieldname_with_table = nil
-      @index = 0
-      @records = []
-      @field_index = 0
     end
 
-    def retr_all_records(protocol, charset)
-      @records = recv_all_records protocol, @fields, charset
-    end
-
+    # ignore
     def free
     end
 
+    # === Return
+    # [Integer] number of record
     def size
       @records.size
     end
+    alias num_rows size
 
-    def fetch_row
+    # Return current record.
+    # === Return
+    # [Array] record data
+    def fetch
       @fetched_record = nil
       return nil if @index >= @records.size
       rec = @records[@index]
@@ -630,11 +637,16 @@ class Mysql
       @fetched_record = rec
       return rec
     end
+    alias fetch_row fetch
 
-    alias fetch fetch_row
-
+    # Return data of current record as Hash.
+    # The hash key is field name.
+    # === Argument
+    # with_table :: if true, hash key is "table_name.field_name".
+    # === Return
+    # [Array of Hash] record data
     def fetch_hash(with_table=nil)
-      row = fetch_row
+      row = fetch
       return nil unless row
       if with_table and @fieldname_with_table.nil?
         @fieldname_with_table = @fields.map{|f| [f.table, f.name].join(".")}
@@ -647,14 +659,26 @@ class Mysql
       ret
     end
 
+    # Iterate block with record.
+    # === Block parameter
+    # [Array] record data
+    # === Return
+    # self. If block is not specified, this returns Enumerator.
     def each(&block)
       return enum_for(:each) unless block
-      while rec = fetch_row
+      while rec = fetch
         block.call rec
       end
       self
     end
 
+    # Iterate block with record as Hash.
+    # === Argument
+    # with_table :: if true, hash key is "table_name.field_name".
+    # === Block parameter
+    # [Array of Hash] record data
+    # === Return
+    # self. If block is not specified, this returns Enumerator.
     def each_hash(with_table=nil, &block)
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
@@ -663,24 +687,52 @@ class Mysql
       self
     end
 
-    def num_rows
-      @records.size
-    end
-
+    # Set record position
+    # === Argument
+    # n :: [Integer] record index
+    # === Return
+    # self
     def data_seek(n)
       @index = n
+      self
     end
 
+    # Return current record position
+    # === Return
+    # [Integer] record position
     def row_tell
       @index
     end
 
+    # Set current position of record
+    # === Argument
+    # n :: [Integer] record index
+    # === Return
+    # [Integer] previous position
     def row_seek(n)
       ret = @index
       @index = n
       ret
     end
+  end
 
+  # Result set for simple query
+  class Result < ResultBase
+    def initialize(fields, protocol=nil)
+      super fields
+      return unless protocol
+      @records = protocol.retr_all_records @fields
+      # for Field#max_length
+      @records.each do |rec|
+        rec.zip(fields) do |v, f|
+          f.max_length = [v ? v.length : 0, f.max_length || 0].max
+        end
+      end
+    end
+
+    # Return current field
+    # === Return
+    # [Mysql::Field] field object
     def fetch_field
       return nil if @field_index >= @fields.length
       ret = @fields[@field_index]
@@ -688,80 +740,61 @@ class Mysql
       ret
     end
 
+    # Return current position of field
+    # === Return
+    # [Integer] field position
     def field_tell
       @field_index
     end
 
+    # Set field position
+    # === Argument
+    # n :: [Integer] field index
+    # === Return
+    # [Integer] previous position
     def field_seek(n)
+      ret = @field_index
       @field_index = n
+      ret
     end
 
+    # Return field
+    # === Argument
+    # n :: [Integer] field index
+    # === Return
+    # [Mysql::Field] field
     def fetch_field_direct(n)
       raise ClientError, "invalid argument: #{n}" if n < 0 or n >= @fields.length
       @fields[n]
     end
 
+    # Return all fields
+    # === Return
+    # [Array of Mysql::Field] all fields
     def fetch_fields
       @fields
     end
 
+    # Return length of each fields
+    # === Return
+    # [Array of Integer] length of each fields
     def fetch_lengths
       return nil unless @fetched_record
       @fetched_record.map{|c|c.nil? ? 0 : c.length}
     end
 
+    # === Return
+    # [Integer] number of fields
     def num_fields
       @fields.size
     end
   end
 
-  # Result set for simple query
-  class SimpleQueryResult < Result
-    private
-
-    def recv_all_records(protocol, fields, charset)
-      ret = protocol.retr_all_records fields
-      ret.each do |rec|
-        rec.zip(fields) do |v, f|
-          f.max_length = [v ? v.length : 0, f.max_length || 0].max
-        end
-      end
-      ret
-    end
-  end
-
   # Result set for prepared statement
-  class StatementResult < Result
-    private
-
-    def recv_all_records(protocol, fields, charset)
-      ret = []
-      while rec = parse_data(protocol.read, fields, charset)
-        ret.push rec
-      end
-      ret
-    end
-
-    def parse_data(data, fields, charset)
-      return nil if Protocol.eof_packet? data
-      data.slice!(0)  # skip first byte
-      null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("b*").first
-      ret = fields.each_with_index.map do |f, i|
-        if null_bit_map[i+2] == ?1
-          nil
-        else
-          unsigned = f.flags & Field::UNSIGNED_FLAG != 0
-          v = Protocol.net2value(data, f.type, unsigned)
-          if v.is_a? Numeric or v.is_a? Mysql::Time
-            v
-          elsif f.type == Field::TYPE_BIT or f.flags & Field::BINARY_FLAG != 0
-            Charset.to_binary(v)
-          else
-            charset.force_encoding(v)
-          end
-        end
-      end
-      ret
+  class StatementResult < ResultBase
+    def initialize(fields, protocol, charset)
+      super fields
+      @records = protocol.stmt_retr_all_records @fields, charset
     end
   end
 
@@ -808,7 +841,9 @@ class Mysql
       self
     end
 
-    # execute prepared-statement.
+    # Execute prepared statement.
+    # === Argument
+    # values passed to query
     # === Return
     # Mysql::Result
     def execute(*values)
@@ -817,12 +852,10 @@ class Mysql
       values = values.map{|v| @charset.convert v}
       begin
         @sqlstate = "00000"
-        @fieldname_with_table = nil
         nfields = @protocol.stmt_execute_command @statement_id, values
         if nfields
           @fields = @protocol.retr_fields nfields
-          @result = StatementResult.new @fields
-          @result.retr_all_records @protocol, @charset
+          @result = StatementResult.new @fields, @protocol, @charset
         else
           @affected_rows, @insert_id, @server_status, @warning_count, @info =
             @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
@@ -835,25 +868,29 @@ class Mysql
       end
     end
 
+    # Close prepared statement
     def close
       ObjectSpace.undefine_finalizer(self)
       @protocol.stmt_close_command @statement_id if @statement_id
       @statement_id = nil
     end
 
+    # Return current record
+    # === Return
+    # [Array] record data
     def fetch
-      row = @result.fetch_row
-      return row if @bind_result.nil?
-      row.enum_for(:each_with_index).map do |col, i|
+      row = @result.fetch
+      return row unless @bind_result
+      row.zip(@bind_result).map do |col, type|
         if col.nil?
           nil
-        elsif [Numeric, Integer, Fixnum].include? @bind_result[i]
+        elsif [Numeric, Integer, Fixnum].include? type
           col.to_i
-        elsif @bind_result[i] == String
+        elsif type == String
           col.to_s
-        elsif @bind_result[i] == Float && !col.is_a?(Float)
+        elsif type == Float && !col.is_a?(Float)
           col.to_i.to_f
-        elsif @bind_result[i] == Mysql::Time && !col.is_a?(Mysql::Time)
+        elsif type == Mysql::Time && !col.is_a?(Mysql::Time)
           if col.to_s =~ /\A\d+\z/
             i = col.to_s.to_i
             if i < 100000000
@@ -884,10 +921,21 @@ class Mysql
       end
     end
 
-    def fetch_hash
-      @result.fetch_hash
+    # Return data of current record as Hash.
+    # The hash key is field name.
+    # === Argument
+    # with_table :: if true, hash key is "table_name.field_name".
+    # === Return
+    # [Array of Hash] record data
+    def fetch_hash(with_table=nil)
+      @result.fetch_hash with_table
     end
 
+    # Set retrieve type of value
+    # === Argument
+    # [Numeric / Fixnum / Integer / Float / String / Mysql::Time / nil] value type
+    # === Return
+    # self
     def bind_result(*args)
       if @fields.length != args.length
         raise ClientError, "bind_result: result value count(#{@fields.length}) != number of argument(#{args.length})"
@@ -899,6 +947,11 @@ class Mysql
       self
     end
 
+    # Iterate block with record.
+    # === Block parameter
+    # [Array] record data
+    # === Return
+    # self. If block is not specified, this returns Enumerator.
     def each(&block)
       return enum_for(:each) unless block
       while rec = fetch
@@ -907,6 +960,13 @@ class Mysql
       self
     end
 
+    # Iterate block with record as Hash.
+    # === Argument
+    # with_table :: if true, hash key is "table_name.field_name".
+    # === Block parameter
+    # [Array of Hash] record data
+    # === Return
+    # self. If block is not specified, this returns Enumerator.
     def each_hash(with_table=nil, &block)
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
@@ -915,30 +975,52 @@ class Mysql
       self
     end
 
-    def num_rows
-      @result.num_rows
+    # === Return
+    # [Integer] number of record
+    def size
+      @result.size
     end
+    alias num_rows size
 
+    # Set record position
+    # === Argument
+    # n :: [Integer] record index
+    # === Return
+    # self
     def data_seek(n)
       @result.data_seek(n)
     end
 
+    # Return current record position
+    # === Return
+    # [Integer] record position
     def row_tell
       @result.row_tell
     end
 
+    # Set current position of record
+    # === Argument
+    # n :: [Integer] record index
+    # === Return
+    # [Integer] previous position
     def row_seek(n)
       @result.row_seek(n)
     end
 
+    # === Return
+    # [Integer] number of columns for last query
     def field_count
       @fields.length
     end
 
+    # ignore
     def free_result
-      # do nothing
     end
 
+    # Returns Mysql::Result object that is empty.
+    # Use fetch_fields to get list of fields.
+    # === Return
+    # [Mysql::Result]
     def result_metadata
       return nil if @fields.empty?
       Result.new @fields
@@ -946,6 +1028,14 @@ class Mysql
   end
 
   class Time
+    # === Argument
+    # year        :: [Integer] year
+    # month       :: [Integer] month
+    # day         :: [Integer] day
+    # hour        :: [Integer] hour
+    # minute      :: [Integer] minute
+    # second      :: [Integer] second
+    # neg         :: [true / false] negative flag
     def initialize(year=0, month=0, day=0, hour=0, minute=0, second=0, neg=false, second_part=0)
       @year, @month, @day, @hour, @minute, @second, @neg, @second_part =
         year.to_i, month.to_i, day.to_i, hour.to_i, minute.to_i, second.to_i, neg, second_part.to_i
@@ -955,17 +1045,19 @@ class Mysql
     alias min minute
     alias sec second
 
-    def ==(other)
+    def ==(other) # :nodoc:
       other.is_a?(Mysql::Time) &&
         @year == other.year && @month == other.month && @day == other.day &&
         @hour == other.hour && @minute == other.minute && @second == other.second &&
         @neg == neg && @second_part == other.second_part
     end
 
-    def eql?(other)
+    def eql?(other) # :nodoc:
       self == other
     end
 
+    # === Return
+    # [String] "yyyy-mm-dd HH:MM:SS"
     def to_s
       if year == 0 and mon == 0 and day == 0
         h = neg ? hour * -1 : hour
@@ -975,11 +1067,13 @@ class Mysql
       end
     end
 
+    # === Return
+    # [Integer] yyyymmddHHMMSS
     def to_i
       sprintf("%04d%02d%02d%02d%02d%02d", year, mon, day, hour, min, sec).to_i
     end
 
-    def inspect
+    def inspect # :nodoc:
       sprintf "#<#{self.class.name}:%04d-%02d-%02d %02d:%02d:%02d>", year, mon, day, hour, min, sec
     end
 

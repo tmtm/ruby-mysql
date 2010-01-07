@@ -5,14 +5,6 @@ require "tempfile"
 
 require "#{File.dirname __FILE__}/../lib/mysql"
 
-class Mysql::Result
-  include Enumerable
-end
-
-class Mysql::Stmt
-  include Enumerable
-end
-
 # MYSQL_USER must have ALL privilege for MYSQL_DATABASE.* and RELOAD privilege for *.*
 MYSQL_SERVER   = "localhost"
 MYSQL_USER     = "test"
