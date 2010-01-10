@@ -1,8 +1,6 @@
 # Copyright (C) 2008-2010 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
-require "enumerator"
-
 # MySQL connection class.
 # === Example
 #  my = Mysql.connect('hostname', 'user', 'password', 'dbname')
