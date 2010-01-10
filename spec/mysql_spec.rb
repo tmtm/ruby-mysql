@@ -1598,6 +1598,19 @@ if defined? Encoding
       @eucjp = @utf8.encode "EUC-JP-MS"
       @bin = "\x00\x01\x7F\x80\xFE\xFF".force_encoding("ASCII-8BIT")
     end
+
+    describe 'query with CP932 encoding' do
+      it 'is converted to UTF-8' do
+        @m.query('select HEX("あいう")'.encode("CP932")).fetch.should == ["E38182E38184E38186"]
+      end
+    end
+
+    describe 'prepared statement with CP932 encoding' do
+      it 'is converted to UTF-8' do
+        @m.prepare('select HEX("あいう")'.encode("CP932")).execute.fetch.should == ["E38182E38184E38186"]
+      end
+    end
+
     describe 'The encoding of data are correspond to charset of column:' do
       before do
         @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
@@ -1612,6 +1625,7 @@ if defined? Encoding
         @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch.should == [@utf8, @utf8, @utf8, @bin]
       end
     end
+
     describe 'The encoding of data are different from charset of column:' do
       before do
         @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @utf8, @utf8, @utf8
@@ -1626,6 +1640,7 @@ if defined? Encoding
         @m.prepare("select utf8,cp932,eucjp,bin from t").execute.fetch.should == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding("ASCII-8BIT")]
       end
     end
+
     describe 'The data include invalid byte code:' do
       it 'raises Encoding::InvalidByteSequenceError' do
         cp932 = "\x01\xFF\x80".force_encoding("CP932")
