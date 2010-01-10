@@ -116,6 +116,7 @@ class Mysql
     # === Argument
     # v :: [Object] Ruby value.
     # === Return
+    # Integer :: type of column. Field::TYPE_*
     # String :: netdata
     # === Exception
     # ProtocolError :: value too large / value is not supported
@@ -176,14 +177,13 @@ class Mysql
     attr_reader :server_info
     attr_reader :server_version
     attr_reader :thread_id
-    attr_reader :charset
     attr_reader :sqlstate
     attr_reader :affected_rows
     attr_reader :insert_id
     attr_reader :server_status
     attr_reader :warning_count
     attr_reader :message
-    attr_accessor :reconnect
+    attr_accessor :charset
 
     # make socket connection to server.
     # === Argument
@@ -193,7 +193,12 @@ class Mysql
     # conn_timeout :: [Integer] connect timeout (sec).
     # read_timeout :: [Integer] read timeout (sec).
     # write_timeout :: [Integer] write timeout (sec).
+    # === Exception
+    # [ClientError] :: connection timeout
     def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout)
+      @mutex = Mutex.new
+      @read_timeout = read_timeout
+      @write_timeout = write_timeout
       begin
         Timeout.timeout conn_timeout do
           if host.nil? or host.empty? or host == "localhost"
@@ -207,12 +212,6 @@ class Mysql
       rescue Timeout::Error
         raise ClientError, "connection timeout"
       end
-      @read_timeout = read_timeout
-      @write_timeout = write_timeout
-      @seq = 0                # packet counter. reset by each command
-      @mutex = Mutex.new
-      @reconnect = false
-      @conninfo = [host, port, socket, conn_timeout]  # for auto reconnection
     end
 
     def close
@@ -227,7 +226,9 @@ class Mysql
     # flag    :: [Integer] client flag
     # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
     def authenticate(user, passwd, db, flag, charset)
+      @authinfo = [user, passwd, db, flag, charset]
       synchronize do
+        reset
         init_packet = InitialPacket.parse read
         @server_info = init_packet.server_version
         @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
@@ -306,7 +307,11 @@ class Mysql
     def retr_all_records(fields)
       all_recs = []
       until self.class.eof_packet?(data = read)
-        all_recs.push fields.map{self.class.lcs2str! data}
+        rec = fields.map do
+          s = self.class.lcs2str!(data)
+          s && charset.force_encoding(s)
+        end
+        all_recs.push rec
       end
       @server_status = data[3].ord
       all_recs
@@ -476,7 +481,7 @@ class Mysql
 
     # Reset sequence number
     def reset
-      @seq = 0
+      @seq = 0    # packet counter. reset by each command
     end
 
     # Read one packet data
@@ -542,11 +547,6 @@ class Mysql
         Timeout.timeout @write_timeout do
           @sock.flush
         end
-      rescue Errno::EPIPE
-        raise unless @reconnect
-        arg = @conninfo + [@read_timeout, @write_timeout]
-        initialize *arg
-        retry
       rescue Timeout::Error
         raise ClientError, "write timeout"
       end

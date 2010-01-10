@@ -28,7 +28,6 @@ class Mysql
   attr_reader :protocol              # :nodoc:
 
   attr_accessor :query_with_result
-  attr_accessor :reconnect           # if true, reconnect automaticalley
 
   class << self
     # Make Mysql object without connecting.
@@ -91,7 +90,6 @@ class Mysql
     @warning_count = 0
     @sqlstate = "00000"
     @query_with_result = true
-    @reconnect = false
     @host_info = nil
     @info = nil
     @last_error = nil
@@ -133,7 +131,7 @@ class Mysql
   #
   # Available options:
   #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_READ_TIMEOUT,
-  #   Mysql::OPT_RECONNECT, Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
+  #   Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
   # === Argument
   # opt   :: [Integer] option
   # value :: option value that is depend on opt
@@ -153,8 +151,7 @@ class Mysql
 #    when Mysql::OPT_PROTOCOL
     when Mysql::OPT_READ_TIMEOUT
       @read_timeout = value.to_i
-    when Mysql::OPT_RECONNECT
-      @reconnect = value
+#    when Mysql::OPT_RECONNECT
 #    when Mysql::SET_CLIENT_IP
 #    when Mysql::OPT_SSL_VERIFY_SERVER_CERT
 #    when Mysql::OPT_USE_EMBEDDED_CONNECTION
@@ -213,7 +210,10 @@ class Mysql
   # cs
   def charset=(cs)
     charset = cs.is_a?(Charset) ? cs : Charset.by_name(cs)
-    query "SET NAMES #{charset.name}" if @protocol
+    if @protocol
+      @protocol.charset = charset
+      query "SET NAMES #{charset.name}"
+    end
     @charset = charset
     cs
   end

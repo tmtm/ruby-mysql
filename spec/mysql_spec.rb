@@ -140,10 +140,6 @@ describe 'Mysql#options' do
     @m.query("load data local infile '#{tmpf.path}' into table t")
     @m.query('select * from t').fetch_row.should == ['123','abc']
   end
-#  it 'OPT_RECONNECT: connect automatically when connection is closed' do
-#    @m.options(Mysql::OPT_RECONNECT, true).should == @m
-#    @m.reconnect.should == true
-#  end
   it 'OPT_READ_TIMEOUT: set timeout for reading packet' do
     @m.options(Mysql::OPT_READ_TIMEOUT, 10).should == @m
   end
@@ -574,22 +570,6 @@ describe 'Mysql' do
       res.fetch_row.should == ['1','2','3']
     end
   end
-
-  describe '#reconnect' do
-    it 'default values is false' do
-      @m.reconnect.should == false
-    end
-    it 'can set value' do
-      (@m.reconnect = true).should == true
-      @m.reconnect.should == true
-      (@m.reconnect = false).should == false
-      @m.reconnect.should == false
-    end
-  end
-
-#  describe '#reconnect is true' do
-#    it 'automatically connect when connection is broken'
-#  end
 
   describe '#query with block' do
     it 'returns self' do
@@ -1587,7 +1567,7 @@ end
 
 describe 'Mysql::Error' do
   before do
-    m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     begin
       m.query('hogehoge')
     rescue => @e
@@ -1604,5 +1584,53 @@ describe 'Mysql::Error' do
 
   it '#sqlstate is sqlstate value as String' do
     @e.sqlstate.should == '42000'
+  end
+end
+
+if defined? Encoding
+  describe 'Connection charset is UTF-8:' do
+    before do
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.charset = "utf8"
+      @m.query "create temporary table t (utf8 char(10) charset utf8, cp932 char(10) charset cp932, eucjp char(10) charset eucjpms, bin varbinary(10))"
+      @utf8 = "いろは"
+      @cp932 = @utf8.encode "CP932"
+      @eucjp = @utf8.encode "EUC-JP-MS"
+      @bin = "\x00\x01\x7F\x80\xFE\xFF".force_encoding("ASCII-8BIT")
+    end
+    describe 'The encoding of data are correspond to charset of column:' do
+      before do
+        @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
+      end
+      it 'data is stored as is' do
+        @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch.should == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF']
+      end
+      it 'By simple query, charset of retrieved data is connection charset' do
+        @m.query('select utf8,cp932,eucjp,bin from t').fetch.should == [@utf8, @utf8, @utf8, @bin.dup.force_encoding("UTF-8")]
+      end
+      it 'By prepared statement, charset of retrieved data is connection charset except for binary' do
+        @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch.should == [@utf8, @utf8, @utf8, @bin]
+      end
+    end
+    describe 'The encoding of data are different from charset of column:' do
+      before do
+        @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @utf8, @utf8, @utf8
+      end
+      it 'stored data is converted' do
+        @m.query("select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t").fetch.should == ["E38184E3828DE381AF", "82A282EB82CD", "A4A4A4EDA4CF", "E38184E3828DE381AF"]
+      end
+      it 'By simple query, charset of retrieved data is connection charset' do
+        @m.query("select utf8,cp932,eucjp,bin from t").fetch.should == [@utf8, @utf8, @utf8, @utf8]
+      end
+      it 'By prepared statement, charset of retrieved data is connection charset except for binary' do
+        @m.prepare("select utf8,cp932,eucjp,bin from t").execute.fetch.should == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding("ASCII-8BIT")]
+      end
+    end
+    describe 'The data include invalid byte code:' do
+      it 'raises Encoding::InvalidByteSequenceError' do
+        cp932 = "\x01\xFF\x80".force_encoding("CP932")
+        proc{@m.prepare("insert into t (cp932) values (?)").execute cp932}.should raise_error(Encoding::InvalidByteSequenceError)
+      end
+    end
   end
 end
