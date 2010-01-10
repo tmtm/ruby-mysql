@@ -15,7 +15,9 @@ MySQL connector for Ruby.
 == Features/Problems
 
 * Ruby だけで書かれているのでコンパイル不要です。
-* Ruby 1.9 の M17N に対応しています。
+
+* Ruby 1.9.x の M17N に対応しています。
+
 * MySQL/Ruby 2.8.x とほぼ互換があります。
 
 == Synopsis
@@ -31,22 +33,36 @@ MySQL connector for Ruby.
 
 == Incompatible with MySQL/Ruby 2.8.x
 
+* Ruby 1.8.x では Mysql#escape_string は、マルチバイト文字の一部として特殊記号を含むシフトJISのようなマルチバイト文字セットに対して安全ではありません。
+
 * いくつかのメソッドがありません: Mysql#debug, Mysql#change_user,
   Mysql#create_db, Mysql#drop_db, Mysql#dump_debug_info,
-  Mysql#ssl_set, Mysql::Stmt#attr_set
+  Mysql#ssl_set, Mysql#reconnect, Mysql::Stmt#attr_set
 
 * Mysql#options でサポートしているオプションは次のものだけです:
   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT,
   Mysql::OPT_LOCAL_INFILE, Mysql::OPT_READ_TIMEOUT,
-  Mysql::OPT_RECONNECT, Mysql::OPT_WRITE_TIMEOUT,
-  Mysql::SET_CHARSET_NAME. これら以外を指定すると "option not
-  implementted" という warning が標準エラー出力に出力されます。
+  Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME.
+  これら以外を指定すると "option not implementted" という warning が標準エラー出力に出力されます。
 
-* Mysql#use_result は Mysql#store_result と同じです。つまりサーバーから
-  一気に結果セットを読み込みます。
+* Mysql#use_result は Mysql#store_result と同じです。つまりサーバーから一気に結果セットを読み込みます。
+
+== Improvement from MySQL/Ruby 2.8.x
+
+* Ruby 1.9.x の M17N に対応しています。
+  mysqld へのクエリ文字列やプリペアドステートメントで与える値は mysqld との接続の文字コードに自動的に変換されます。
+  mysqld からの結果文字列は接続文字コードとして取り出されます。
+
+* Mysql::Result, Mysql::Stmt が Enumerable を include しています。
+
+* ブロックなしの Mysql::Result#each, each_hash Mysql::Stmt#each, each_hash が Enumerator を返します。
+
+* Mysql#charset= で接続 charset を指定できます。
+
+* Mysql::Error だけでなく、エラー種別ごとにエラークラスが用意されてます。たとえば、構文エラーの場合は Mysql::ParseError など。これらのエラーは Mysql::Error の継承クラスです。
 
 == Copyright
 
 Author    :: TOMITA Masahiro <tommy@tmtm.org>
-Copyright :: Copyright (c) 2009 TOMITA Masahiro
+Copyright :: Copyright (c) 2009-2010 TOMITA Masahiro
 License   :: Ruby's
