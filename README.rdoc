@@ -37,7 +37,7 @@ MySQL connector for Ruby.
 
 * いくつかのメソッドがありません: Mysql#debug, Mysql#change_user,
   Mysql#create_db, Mysql#drop_db, Mysql#dump_debug_info,
-  Mysql#ssl_set, Mysql#reconnect, Mysql::Stmt#attr_set
+  Mysql#ssl_set, Mysql#reconnect
 
 * Mysql#options でサポートしているオプションは次のものだけです:
   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT,
