@@ -39,7 +39,7 @@ class Mysql
     # Arguments are same as Mysql#connect.
     def new(*args)
       my = self.init
-      my.connect *args
+      my.connect(*args)
     end
 
     alias real_connect new
@@ -805,9 +805,7 @@ class Mysql
 
     def self.finalizer(protocol, statement_id)
       proc do
-        Thread.new do
-          protocol.stmt_close_command statement_id
-        end
+        protocol.gc_stmt statement_id
       end
     end
 
@@ -843,7 +841,7 @@ class Mysql
     # === Argument
     # values passed to query
     # === Return
-    # Mysql::Result
+    # self
     def execute(*values)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count

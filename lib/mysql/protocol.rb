@@ -1,10 +1,9 @@
-# Copyright (C) 2008-2009 TOMITA Masahiro
+# Copyright (C) 2008-2010 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 require "socket"
 require "timeout"
 require "digest/sha1"
-require "thread"
 require "stringio"
 
 class Mysql
@@ -185,6 +184,12 @@ class Mysql
     attr_reader :message
     attr_accessor :charset
 
+    # @state variable keep state for connection.
+    # :INIT   :: Initial state.
+    # :READY  :: Ready for command.
+    # :FIELD  :: After query(). retr_fields() is needed.
+    # :RESULT :: After retr_fields(), retr_all_records() or stmt_retr_all_records() is needed.
+
     # make socket connection to server.
     # === Argument
     # host :: [String] if "localhost" or "" nil then use UNIXSocket. Otherwise use TCPSocket
@@ -196,7 +201,8 @@ class Mysql
     # === Exception
     # [ClientError] :: connection timeout
     def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout)
-      @mutex = Mutex.new
+      @gc_stmt_queue = []   # stmt id list which GC destroy.
+      set_state :INIT
       @read_timeout = read_timeout
       @write_timeout = write_timeout
       begin
@@ -226,25 +232,25 @@ class Mysql
     # flag    :: [Integer] client flag
     # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
     def authenticate(user, passwd, db, flag, charset)
+      check_state :INIT
       @authinfo = [user, passwd, db, flag, charset]
-      synchronize do
-        reset
-        init_packet = InitialPacket.parse read
-        @server_info = init_packet.server_version
-        @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
-        @thread_id = init_packet.thread_id
-        client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
-        client_flags |= CLIENT_CONNECT_WITH_DB if db
-        client_flags |= flag
-        @charset = charset
-        unless @charset
-          @charset = Charset.by_number(init_packet.server_charset)
-          @charset.encoding       # raise error if unsupported charset
-        end
-        netpw = encrypt_password passwd, init_packet.scramble_buff
-        write AuthenticationPacket.serialize(client_flags, 1024**3, @charset.number, user, netpw, db)
-        read            # skip OK packet
+      reset
+      init_packet = InitialPacket.parse read
+      @server_info = init_packet.server_version
+      @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+      @thread_id = init_packet.thread_id
+      client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+      client_flags |= CLIENT_CONNECT_WITH_DB if db
+      client_flags |= flag
+      @charset = charset
+      unless @charset
+        @charset = Charset.by_number(init_packet.server_charset)
+        @charset.encoding       # raise error if unsupported charset
       end
+      netpw = encrypt_password passwd, init_packet.scramble_buff
+      write AuthenticationPacket.serialize(client_flags, 1024**3, @charset.number, user, netpw, db)
+      read            # skip OK packet
+      set_state :READY
     end
 
     # Quit command
@@ -262,10 +268,14 @@ class Mysql
     # === Return
     # [Integer / nil] number of fields of results. nil if no results.
     def query_command(query)
-      synchronize do
+      check_state :READY
+      begin
         reset
         write [COM_QUERY, @charset.convert(query)].pack("Ca*")
         get_result
+      rescue
+        set_state :READY
+        raise
       end
     end
 
@@ -273,19 +283,26 @@ class Mysql
     # === Return
     # [integer / nil] number of fields of results. nil if no results.
     def get_result
-      res_packet = ResultPacket.parse read
-      if res_packet.field_count.to_i > 0  # result data exists
-        return res_packet.field_count
+      begin
+        res_packet = ResultPacket.parse read
+        if res_packet.field_count.to_i > 0  # result data exists
+          set_state :FIELD
+          return res_packet.field_count
+        end
+        if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
+          filename = res_packet.message
+          File.open(filename){|f| write f}
+          write nil  # EOF mark
+          read
+        end
+        @affected_rows, @insert_id, @server_status, @warning_count, @message =
+          res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
+        set_state :READY
+        return nil
+      rescue
+        set_state :READY
+        raise
       end
-      if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
-        filename = res_packet.message
-        File.open(filename){|f| write f}
-        write nil  # EOF mark
-        read
-      end
-      @affected_rows, @insert_id, @server_status, @warning_count, @message =
-        res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
-      return nil
     end
 
     # Retrieve n fields
@@ -294,9 +311,16 @@ class Mysql
     # === Return
     # [Array of Mysql::Field] field list
     def retr_fields(n)
-      fields = n.times.map{Field.new FieldPacket.parse(read)}
-      read_eof_packet
-      fields
+      check_state :FIELD
+      begin
+        fields = n.times.map{Field.new FieldPacket.parse(read)}
+        read_eof_packet
+        set_state :RESULT
+        fields
+      rescue
+        set_state :READY
+        raise
+      end
     end
 
     # Retrieve all records for simple query
@@ -305,16 +329,21 @@ class Mysql
     # === Return
     # [Array of Array of String] all records
     def retr_all_records(fields)
-      all_recs = []
-      until self.class.eof_packet?(data = read)
-        rec = fields.map do
-          s = self.class.lcs2str!(data)
-          s && charset.force_encoding(s)
+      check_state :RESULT
+      begin
+        all_recs = []
+        until self.class.eof_packet?(data = read)
+          rec = fields.map do
+            s = self.class.lcs2str!(data)
+            s && charset.force_encoding(s)
+          end
+          all_recs.push rec
         end
-        all_recs.push rec
+        @server_status = data[3].ord
+        all_recs
+      ensure
+        set_state :READY
       end
-      @server_status = data[3].ord
-      all_recs
     end
 
     # Field list command
@@ -339,13 +368,18 @@ class Mysql
     # === Return
     # [Array of Field] field list
     def process_info_command
-      synchronize do
+      check_state :READY
+      begin
         reset
         write [COM_PROCESS_INFO].pack("C")
         field_count = self.class.lcb2int!(read)
         fields = field_count.times.map{Field.new FieldPacket.parse(read)}
         read_eof_packet
+        set_state :RESULT
         return fields
+      rescue
+        set_state :READY
+        raise
       end
     end
 
@@ -412,10 +446,14 @@ class Mysql
     # === Return
     # [Integer] number of fields
     def stmt_execute_command(stmt_id, values)
-      synchronize do
+      check_state :READY
+      begin
         reset
         write ExecutePacket.serialize(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
-        return get_result
+        get_result
+      rescue
+        set_state :READY
+        raise
       end
     end
 
@@ -426,11 +464,16 @@ class Mysql
     # === Return
     # [Array of Array of Object] all records
     def stmt_retr_all_records(fields, charset)
-      all_recs = []
-      until self.class.eof_packet?(data = read)
-        all_recs.push stmt_parse_record_packet(data, fields, charset)
+      check_state :RESULT
+      begin
+        all_recs = []
+        until self.class.eof_packet?(data = read)
+          all_recs.push stmt_parse_record_packet(data, fields, charset)
+        end
+        all_recs
+      ensure
+        set_state :READY
       end
-      all_recs
     end
 
     # Stmt close command
@@ -441,6 +484,10 @@ class Mysql
         reset
         write [COM_STMT_CLOSE, stmt_id].pack("CV")
       end
+    end
+
+    def gc_stmt(stmt_id)
+      @gc_stmt_queue.push stmt_id
     end
 
     private
@@ -473,9 +520,31 @@ class Mysql
       rec
     end
 
+    def check_state(st)
+      raise 'command out of sync' unless @state == st
+    end
+
+    def set_state(st)
+      @state = st
+      if st == :READY
+        gc_disabled = GC.disable
+        begin
+          while st = @gc_stmt_queue.shift
+            reset
+            write [COM_STMT_CLOSE, st].pack("CV")
+          end
+        ensure
+          GC.enable unless gc_disabled
+        end
+      end
+    end
+
     def synchronize
-      @mutex.synchronize do
+      begin
+        check_state :READY
         return yield
+      ensure
+        set_state :READY
       end
     end
 
