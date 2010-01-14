@@ -1,3 +1,7 @@
+2010-01-15  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* Fix: When GC destroy Mysql::Stmt object, protocol error occurred
+
 2010-01-10  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* Version 2.9.0-beta
