@@ -175,15 +175,10 @@ class Mysql
   # In Ruby 1.8, this is not safe for multibyte charset such as 'SJIS'.
   # You should use place-holder in prepared-statement.
   def escape_string(str)
-    str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
-      case s
-      when "\0" then "\\0"
-      when "\n" then "\\n"
-      when "\r" then "\\r"
-      when "\x1a" then "\\Z"
-      else "\\#{s}"
-      end
+    if not defined? Encoding and @charset.unsafe
+      raise ClientError, 'Mysql#escape_string is called for unsafe multibyte charset'
     end
+    self.class.escape_string str
   end
   alias quote escape_string
 

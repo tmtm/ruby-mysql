@@ -7,8 +7,10 @@ class Mysql
   class Charset
     def initialize(number, name, csname)
       @number, @name, @csname = number, name, csname
+      @unsafe = false
     end
     attr_reader :number, :name, :csname
+    attr_accessor :unsafe
 
     # [[charset_number, charset_name, collation_name, default], ...]
     CHARSETS = [
@@ -28,6 +30,7 @@ class Mysql
       [ 14, "cp1251",   "cp1251_bulgarian_ci",  false],
       [ 15, "latin1",   "latin1_danish_ci",     false],
       [ 16, "hebrew",   "hebrew_general_ci",    true ],
+      [ 17, "filename", "filename",             true ],
       [ 18, "tis620",   "tis620_thai_ci",       true ],
       [ 19, "euckr",    "euckr_korean_ci",      true ],
       [ 20, "latin7",   "latin7_estonian_cs",   false],
@@ -100,6 +103,7 @@ class Mysql
       [ 96, "cp932",    "cp932_bin"          ,  false],
       [ 97, "eucjpms",  "eucjpms_japanese_ci",  true ],
       [ 98, "eucjpms",  "eucjpms_bin",          false],
+      [ 99, "cp1250",   "cp1250_polish_ci",     false],
       [128, "ucs2",     "ucs2_unicode_ci",      false],
       [129, "ucs2",     "ucs2_icelandic_ci",    false],
       [130, "ucs2",     "ucs2_latvian_ci",      false],
@@ -138,6 +142,11 @@ class Mysql
       [208, "utf8",     "utf8_persian_ci",      false],
       [209, "utf8",     "utf8_esperanto_ci",    false],
       [210, "utf8",     "utf8_hungarian_ci",    false],
+      [254, "utf8",     "utf8_general_cs",      false],
+    ]
+
+    UNSAFE_CHARSET = [
+      "big5", "sjis", "filename", "gbk", "ucs2", "cp932",
     ]
 
     NUMBER_TO_CHARSET = {}
@@ -145,6 +154,7 @@ class Mysql
     CHARSET_DEFAULT = {}
     CHARSETS.each do |number, csname, clname, default|
       cs = Charset.new number, csname, clname
+      cs.unsafe = true if UNSAFE_CHARSET.include? csname
       NUMBER_TO_CHARSET[number] = cs
       COLLATION_TO_CHARSET[clname] = cs
       CHARSET_DEFAULT[csname] = cs if default

@@ -163,28 +163,26 @@ describe 'Mysql' do
   end
 
   describe '#escape_string' do
-    it 'escape special character for charset' do
-      m = Mysql.init
-      m.options Mysql::SET_CHARSET_NAME, 'cp932'
-      m.connect MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET
-      if defined? ::Encoding
-        m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')).should == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932')
-      else
-        m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\").should == "abc\\'def\\\"ghi\\0jkl%mno_\x95\\\\"   # unsafe for some charset such as cp932.
+    if defined? ::Encoding
+      it 'escape special character for charset' do
+        @m.charset = 'cp932'
+        @m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')).should == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932')
+      end
+    else
+      it 'raise error if charset is multibyte' do
+        @m.charset = 'cp932'
+        proc{@m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\")}.should raise_error(Mysql::ClientError, 'Mysql#escape_string is called for unsafe multibyte charset')
+      end
+      it 'not warn if charset is singlebyte' do
+        @m.charset = 'latin1'
+        @m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\").should == "abc\\'def\\\"ghi\\0jkl%mno_\x95\\\\"
       end
     end
   end
 
   describe '#quote' do
-    it 'escape special character for charset' do
-      m = Mysql.init
-      m.options Mysql::SET_CHARSET_NAME, 'cp932'
-      m.connect MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET
-      if defined? ::Encoding
-        m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')).should == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932')
-      else
-        m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\").should == "abc\\'def\\\"ghi\\0jkl%mno_\x95\\\\"   # unsafe for some charset such as cp932.
-      end
+    it 'is alias of #escape_string' do
+      @m.method(:quote).should == @m.method(:escape_string)
     end
   end
 

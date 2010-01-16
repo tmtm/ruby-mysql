@@ -33,7 +33,7 @@ MySQL connector for Ruby.
 
 == Incompatible with MySQL/Ruby 2.8.x
 
-* Ruby 1.8.x では Mysql#escape_string は、マルチバイト文字の一部として特殊記号を含むシフトJISのようなマルチバイト文字セットに対して安全ではありません。
+* Ruby 1.8.x ではシフトJISのような安全でないマルチバイト文字セットに対して Mysql#escape_string を使用すると例外が発生します。
 
 * いくつかのメソッドがありません: Mysql#debug, Mysql#change_user,
   Mysql#create_db, Mysql#drop_db, Mysql#dump_debug_info,
