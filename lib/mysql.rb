@@ -220,7 +220,7 @@ class Mysql
   # === Return
   # [Integer] last error number
   def errno
-    @last_error && @last_error.errno
+    @last_error ? @last_error.errno : 0
   end
 
   # === Return

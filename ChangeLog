@@ -1,3 +1,8 @@
+2010-01-17  TOMITA Masahiro  <tommy@tommy.tmtm.org>
+
+	* lib/mysql.rb (Mysql#errno): Fix: Mysql#errno's default value
+	should be 0.
+
 2010-01-16  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql.rb (Mysql#escape_string): raise error for unsafe

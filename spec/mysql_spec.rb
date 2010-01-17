@@ -228,6 +228,9 @@ describe 'Mysql' do
 #  end
 
   describe '#errno' do
+    it 'default value is 0' do
+      @m.errno.should == 0
+    end
     it 'returns error number of latest error' do
       @m.query('hogehoge') rescue nil
       @m.errno.should == 1064
