@@ -10,7 +10,7 @@ MySQL connector for Ruby.
 
 === Gem Installation
 
- gem install ruby-mysql-v 2.9.1
+ gem install ruby-mysql-v 2.9.2
 
 == Features/Problems
 
