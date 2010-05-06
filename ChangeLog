@@ -1,5 +1,7 @@
 2010-05-06  TOMITA Masahiro  <tommy@tmtm.org>
 
+	* lib/mysql.rb (Mysql#connect): Fix: Mysql.connect ignore flag.
+
 	* spec/mysql_spec.rb: use environment variables for MySQL
 	connection.
 

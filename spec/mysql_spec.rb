@@ -30,6 +30,13 @@ describe 'Mysql.real_connect' do
     @m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     @m.should be_kind_of Mysql
   end
+  it 'flag argument affects' do
+    @m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET, Mysql::CLIENT_FOUND_ROWS)
+    @m.query 'create temporary table t (c int)'
+    @m.query 'insert into t values (123)'
+    @m.query 'update t set c=123'
+    @m.affected_rows.should == 1
+  end
   after do
     @m.close
   end

@@ -108,7 +108,7 @@ class Mysql
   # self
   def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
     @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
-    @protocol.authenticate user, passwd, db, (@local_infile ? CLIENT_LOCAL_FILES : 0), @charset
+    @protocol.authenticate user, passwd, db, (@local_infile ? CLIENT_LOCAL_FILES : 0) | (flag || 0), @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
     query @init_command if @init_command
