@@ -1,3 +1,8 @@
+2010-05-06  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* spec/mysql_spec.rb: use environment variables for MySQL
+	connection.
+
 2010-01-17  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql.rb (Mysql#errno): Fix: Mysql#errno's default value

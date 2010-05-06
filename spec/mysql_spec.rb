@@ -6,12 +6,12 @@ require "tempfile"
 require "#{File.dirname __FILE__}/../lib/mysql"
 
 # MYSQL_USER must have ALL privilege for MYSQL_DATABASE.* and RELOAD privilege for *.*
-MYSQL_SERVER   = "localhost"
-MYSQL_USER     = "test"
-MYSQL_PASSWORD = "hogehoge"
-MYSQL_DATABASE = "test_for_mysql_ruby"
-MYSQL_PORT     = 3306
-MYSQL_SOCKET   = "/var/run/mysqld/mysqld.sock"
+MYSQL_SERVER   = ENV['MYSQL_SERVER']
+MYSQL_USER     = ENV['MYSQL_USER']
+MYSQL_PASSWORD = ENV['MYSQL_PASSWORD']
+MYSQL_DATABASE = ENV['MYSQL_DATABASE'] || "test_for_mysql_ruby"
+MYSQL_PORT     = ENV['MYSQL_PORT']
+MYSQL_SOCKET   = ENV['MYSQL_SOCKET']
 
 describe 'Mysql::VERSION' do
   it 'returns client version' do
