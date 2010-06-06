@@ -207,7 +207,7 @@ class Mysql
         "macroman" => Encoding::MacRoman,
         "sjis"     => Encoding::SHIFT_JIS,
         "swe7"     => nil,
-        "tis620"   => nil,
+        "tis620"   => Encoding::TIS_620,
         "ucs2"     => Encoding::UTF_16BE,
         "ujis"     => Encoding::EucJP_ms,
         "utf8"     => Encoding::UTF_8,
