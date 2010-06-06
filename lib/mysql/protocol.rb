@@ -335,7 +335,7 @@ class Mysql
         until self.class.eof_packet?(data = read)
           rec = fields.map do
             s = self.class.lcs2str!(data)
-            s && charset.force_encoding(s)
+            s && Charset.convert_encoding(s, charset.encoding)
           end
           all_recs.push rec
         end
@@ -513,7 +513,7 @@ class Mysql
           elsif f.type == Field::TYPE_BIT or f.flags & Field::BINARY_FLAG != 0
             Charset.to_binary(v)
           else
-            charset.force_encoding(v)
+            Charset.convert_encoding(v, charset.encoding)
           end
         end
       end

@@ -1,4 +1,4 @@
-# Copyright (C) 2008 TOMITA Masahiro
+# Copyright (C) 2008-2010 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 require "#{File.dirname __FILE__}/error"
@@ -217,6 +217,16 @@ class Mysql
         value.dup.force_encoding Encoding::ASCII_8BIT
       end
 
+      # convert raw to encoding and convert to Encoding.default_internal
+      # === Argument
+      # raw :: [String]
+      # charset :: [Mysql::Charset]
+      # === Return
+      # result [String]
+      def self.convert_encoding(raw, encoding)
+        raw.dup.force_encoding(encoding).encode
+      end
+
       # retrun corresponding Ruby encoding
       # === Return
       # encoding [Encoding]
@@ -234,19 +244,15 @@ class Mysql
         value
       end
 
-      # convert encoding from MySQL charset to Ruby
-      def force_encoding(value)
-        if value.is_a? String
-          value = value.dup.force_encoding encoding
-        end
-        value
-      end
-
     else
       # for Ruby 1.8
 
       def self.to_binary(value)
         value
+      end
+
+      def self.convert_encoding(raw, encoding)
+        raw
       end
 
       def encoding
@@ -257,9 +263,6 @@ class Mysql
         value
       end
 
-      def force_encoding(value)
-        value
-      end
     end
   end
 end

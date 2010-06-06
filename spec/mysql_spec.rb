@@ -1605,6 +1605,20 @@ if defined? Encoding
       @cp932 = @utf8.encode "CP932"
       @eucjp = @utf8.encode "EUC-JP-MS"
       @bin = "\x00\x01\x7F\x80\xFE\xFF".force_encoding("ASCII-8BIT")
+      @default_internal = Encoding.default_internal
+    end
+
+    after do
+      Encoding.default_internal = @default_internal
+    end
+
+    describe 'default_internal is CP932' do
+      before do
+        Encoding.default_internal = 'CP932'
+      end
+      it 'is converted to CP932' do
+        @m.query('select "あいう"').fetch.should == ["\x82\xA0\x82\xA2\x82\xA4".force_encoding("CP932")]
+      end
     end
 
     describe 'query with CP932 encoding' do
