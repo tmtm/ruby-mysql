@@ -1,3 +1,10 @@
+2010-06-06  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/charset.rb: support tis620 charset.
+
+	* lib/mysql/charset.rb, lib/mysql/protocol.rb: convert encoding to
+	Encoding.default_internal.
+
 2010-05-06  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql.rb (Mysql#connect): Fix: Mysql.connect ignore flag.
