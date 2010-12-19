@@ -663,7 +663,6 @@ class Mysql
         rest_scramble_buff = data.unpack("CZ*Va8CvCva13Z13")
         raise ProtocolError, "unsupported version: #{protocol_version}" unless protocol_version == VERSION
         raise ProtocolError, "invalid packet: f0=#{f0}" unless f0 == 0
-        raise ProtocolError, "invalid packet: f1=#{f1.inspect}" unless f1 == "\0\0\0\0\0\0\0\0\0\0\0\0\0"
         scramble_buff.concat rest_scramble_buff
         self.new protocol_version, server_version, thread_id, server_capabilities, server_charset, server_status, scramble_buff
       end
