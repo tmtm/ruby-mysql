@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-require "rubygems"
-require "spec"
 require "tempfile"
 
-require "#{File.dirname __FILE__}/../lib/mysql"
+$LOAD_PATH.unshift "#{File.dirname __FILE__}/../lib"
+
+require "mysql"
 
 # MYSQL_USER must have ALL privilege for MYSQL_DATABASE.* and RELOAD privilege for *.*
 MYSQL_SERVER   = ENV['MYSQL_SERVER']
