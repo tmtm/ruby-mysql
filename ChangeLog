@@ -1,3 +1,26 @@
+2010-12-31  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql.rb: add Mysql#close! method.
+
+2010-12-30  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/protocol.rb: raise ClientError::ServerGoneError when
+	connection is disconnected.
+
+2010-12-29  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/error.rb: add Mysql::ServerError::<Error> and
+	Mysql::ClientError::<Error> class.
+
+	* spec/mysql_spec.rb: for RSpec 2
+
+	* lib/mysql/charset.rb: add utf8mb4 charset.
+
+2010-12-19  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/protocol.rb: Fix: error 'Mysql::ProtocolError Invalid
+	packet: f1...' occurred on MySQL 5.5
+
 2010-06-06  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql/charset.rb: support tis620 charset.

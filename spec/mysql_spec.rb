@@ -228,6 +228,12 @@ describe 'Mysql' do
     end
   end
 
+  describe '#close!' do
+    it 'returns self' do
+      @m.close!.should == @m
+    end
+  end
+
 #  describe '#create_db' do
 #  end
 

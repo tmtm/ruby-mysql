@@ -125,6 +125,15 @@ class Mysql
     return self
   end
 
+  # Disconnect from mysql without QUIT packet.
+  def close!
+    if @protocol
+      @protocol.close
+      @protocol = nil
+    end
+    return self
+  end
+
   # Set option for connection.
   #
   # Available options:
