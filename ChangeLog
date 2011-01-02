@@ -1,3 +1,7 @@
+2011-01-02  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* .autotest, .rspec: for autotest.
+
 2010-12-31  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql.rb: add Mysql#close! method.
