@@ -10,7 +10,7 @@ MySQL connector for Ruby.
 
 === Gem Installation
 
- gem install ruby-mysql-v 2.9.2
+ gem install ruby-mysql
 
 == Features/Problems
 
@@ -59,7 +59,7 @@ MySQL connector for Ruby.
 
 * Mysql#charset= で接続 charset を指定できます。
 
-* Mysql::Error だけでなく、エラー種別ごとにエラークラスが用意されてます。たとえば、構文エラーの場合は Mysql::ParseError など。これらのエラーは Mysql::Error の継承クラスです。
+* Mysql::Error だけでなく、エラー種別ごとにエラークラスが用意されてます。たとえば、構文エラーの場合は Mysql::ServerError::ParseError など。これらのエラーは Mysql::Error の継承クラスです。
 
 == Copyright
 
