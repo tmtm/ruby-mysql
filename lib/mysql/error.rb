@@ -744,7 +744,7 @@ class Mysql
     ER_ERROR_LAST                                             = 1704
   end
 
-  ServerError.define_error_class /\AER_/
+  ServerError.define_error_class(/\AER_/)
   ServerError::ERROR_MAP.values.each{|v| Mysql.const_set v.name.split(/::/).last, v} # for compatibility
 
   # client side error
@@ -813,7 +813,7 @@ class Mysql
     CR_AUTH_PLUGIN_CANNOT_LOAD               = 2059
   end
 
-  ClientError.define_error_class /\ACR_/
+  ClientError.define_error_class(/\ACR_/)
 
   # protocol error
   class ProtocolError < ClientError

@@ -1,5 +1,7 @@
 2011-02-05  TOMITA Masahiro  <tommy@tmtm.org>
 
+	* lib/mysql/error.rb: avoid warning when ruby -w.
+
 	* lib/mysql.rb (Mysql#connect): warn if CLIENT_COMPRESS flag is specified.
 
 2011-01-02  TOMITA Masahiro  <tommy@tmtm.org>
