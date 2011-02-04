@@ -1,4 +1,4 @@
-# Copyright (C) 2008-2010 TOMITA Masahiro
+# Copyright (C) 2008-2011 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 # MySQL connection class.
@@ -106,9 +106,13 @@ class Mysql
   # flag   :: [Integer / nil] connection flag. Mysql::CLIENT_* ORed
   # === Return
   # self
-  def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=nil)
+  def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=0)
+    if flag & CLIENT_COMPRESS != 0
+      warn 'unsupported flag: CLIENT_COMPRESS'
+      flag &= ~CLIENT_COMPRESS
+    end
     @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
-    @protocol.authenticate user, passwd, db, (@local_infile ? CLIENT_LOCAL_FILES : 0) | (flag || 0), @charset
+    @protocol.authenticate user, passwd, db, (@local_infile ? CLIENT_LOCAL_FILES : 0) | flag, @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
     query @init_command if @init_command
