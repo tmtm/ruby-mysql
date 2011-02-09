@@ -181,6 +181,8 @@ class Mysql
       CHARSET_DEFAULT[csname] = cs if default
     end
 
+    BINARY_CHARSET_NUMBER = CHARSET_DEFAULT['binary'].number
+
     def self.by_number(n)
       raise ClientError, "unknown charset number: #{n}" unless NUMBER_TO_CHARSET.key? n
       NUMBER_TO_CHARSET[n]

@@ -510,7 +510,7 @@ class Mysql
           v = self.class.net2value(data, f.type, unsigned)
           if v.is_a? Numeric or v.is_a? Mysql::Time
             v
-          elsif f.type == Field::TYPE_BIT or f.flags & Field::BINARY_FLAG != 0
+          elsif f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
             Charset.to_binary(v)
           else
             Charset.convert_encoding(v, charset.encoding)
