@@ -1,3 +1,9 @@
+2011-02-11  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/protocol.rb (Mysql::Protocol#stmt_parse_record_packet):
+	Fix encoding of retrieved data when the field has binary
+	collation. Thanks MATSUYAMA Kengo.
+
 2011-02-05  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql/error.rb: avoid warning when ruby -w.
