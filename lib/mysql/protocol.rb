@@ -231,6 +231,8 @@ class Mysql
     # db      :: [String / nil] default database name. nil: no default.
     # flag    :: [Integer] client flag
     # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
+    # === Exception
+    # ProtocolError :: The old style password is not supported
     def authenticate(user, passwd, db, flag, charset)
       check_state :INIT
       @authinfo = [user, passwd, db, flag, charset]
@@ -249,7 +251,7 @@ class Mysql
       end
       netpw = encrypt_password passwd, init_packet.scramble_buff
       write AuthenticationPacket.serialize(client_flags, 1024**3, @charset.number, user, netpw, db)
-      read            # skip OK packet
+      raise ProtocolError, 'The old style password is not supported' if read == "\xfe"
       set_state :READY
     end
 

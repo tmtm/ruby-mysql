@@ -1,3 +1,8 @@
+2011-08-04  TOMITA Masahiro  <tommy@tmtm.org>
+
+	* lib/mysql/protocol.rb (Mysql::Protocol#authenticate): Raise
+	ProtocolError when user with old password attempts to login.
+
 2011-02-11  TOMITA Masahiro  <tommy@tmtm.org>
 
 	* lib/mysql/protocol.rb (Mysql::Protocol#stmt_parse_record_packet):
