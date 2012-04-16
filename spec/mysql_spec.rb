@@ -704,7 +704,7 @@ describe 'Mysql::Result' do
     f.name.should == 'id'
     f = @res.fetch_field_direct 1
     f.name.should == 'str'
-    proc{@res.fetch_field_direct -1}.should raise_error Mysql::ClientError, 'invalid argument: -1'
+    proc{@res.fetch_field_direct(-1)}.should raise_error Mysql::ClientError, 'invalid argument: -1'
     proc{@res.fetch_field_direct 2}.should raise_error Mysql::ClientError, 'invalid argument: 2'
   end
 

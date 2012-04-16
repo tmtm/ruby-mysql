@@ -638,6 +638,7 @@ class Mysql
       @records = []                # all records
       @index = 0                   # index of record
       @fieldname_with_table = nil
+      @fetched_record = nil
     end
 
     # ignore
@@ -843,6 +844,7 @@ class Mysql
       @affected_rows = @insert_id = @server_status = @warning_count = 0
       @sqlstate = "00000"
       @param_count = nil
+      @bind_result = nil
     end
 
     # parse prepared-statement and return Mysql::Statement object
