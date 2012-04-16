@@ -570,7 +570,12 @@ class Mysql
           len = (len2 << 8) + len1
           raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
           @seq = (@seq + 1) % 256
-          ret.concat @sock.sysread(len)
+          buf = ''.force_encoding('ASCII-8BIT')
+          l = len
+          while l > 0
+            ret.concat @sock.sysread(l, buf)
+            l -= buf.bytesize
+          end
         end
       rescue EOFError
         raise ClientError::ServerGoneError, 'The MySQL server has gone away'
