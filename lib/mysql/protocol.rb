@@ -1,4 +1,4 @@
-# Copyright (C) 2008-2010 TOMITA Masahiro
+# Copyright (C) 2008-2012 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 require "socket"
@@ -201,6 +201,8 @@ class Mysql
     # === Exception
     # [ClientError] :: connection timeout
     def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout)
+      @insert_id = 0
+      @warning_count = 0
       @gc_stmt_queue = []   # stmt id list which GC destroy.
       set_state :INIT
       @read_timeout = read_timeout

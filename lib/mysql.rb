@@ -1,4 +1,4 @@
-# Copyright (C) 2008-2011 TOMITA Masahiro
+# Copyright (C) 2008-2012 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 # MySQL connection class.
@@ -21,8 +21,6 @@ class Mysql
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
   attr_reader :charset               # character set of MySQL connection
-  attr_reader :affected_rows         # number of affected records by insert/update/delete.
-  attr_reader :warning_count         # number of warnings for previous query
   attr_reader :protocol              # :nodoc:
 
   attr_accessor :query_with_result
@@ -84,12 +82,9 @@ class Mysql
     @read_timeout = nil
     @write_timeout = nil
     @init_command = nil
-    @affected_rows = nil
-    @warning_count = 0
     @sqlstate = "00000"
     @query_with_result = true
     @host_info = nil
-    @info = nil
     @last_error = nil
     @result_exist = false
     @local_infile = nil
@@ -287,13 +282,25 @@ class Mysql
   # === Return
   # [String] information for last query
   def info
-    @info
+    @protocol && @protocol.message
+  end
+
+  # === Return
+  # [Integer] number of affected records by insert/update/delete.
+  def affected_rows
+    @protocol ? @protocol.affected_rows : 0
   end
 
   # === Return
   # [Integer] latest auto_increment value
   def insert_id
-    @insert_id
+    @protocol ? @protocol.insert_id : 0
+  end
+
+  # === Return
+  # [Integer] number of warnings for previous query
+  def warning_count
+    @protocol ? @protocol.warning_count : 0
   end
 
   # Kill query.
@@ -337,9 +344,6 @@ class Mysql
       if nfields
         @fields = @protocol.retr_fields nfields
         @result_exist = true
-      else
-        @affected_rows, @insert_id, @server_status, @warning_count, @info =
-          @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
       end
       if block
         while true
@@ -368,7 +372,6 @@ class Mysql
     check_connection
     raise ClientError, 'invalid usage' unless @result_exist
     res = Result.new @fields, @protocol
-    @server_status = @protocol.server_status
     @result_exist = false
     res
   end
@@ -399,7 +402,7 @@ class Mysql
 
   # true if multiple queries are specified and unexecuted queries exists.
   def more_results
-    @server_status & SERVER_MORE_RESULTS_EXISTS != 0
+    @protocol.server_status & SERVER_MORE_RESULTS_EXISTS != 0
   end
   alias more_results? more_results
 
