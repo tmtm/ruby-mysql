@@ -64,5 +64,5 @@ MySQL connector for Ruby.
 == Copyright
 
 Author    :: TOMITA Masahiro <tommy@tmtm.org>
-Copyright :: Copyright (c) 2009-2010 TOMITA Masahiro
+Copyright :: Copyright (c) 2009-2012 TOMITA Masahiro
 License   :: Ruby's
