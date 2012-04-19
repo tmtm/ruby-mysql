@@ -572,10 +572,10 @@ class Mysql
           len = (len2 << 8) + len1
           raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
           @seq = (@seq + 1) % 256
-          buf = ''.force_encoding('ASCII-8BIT')
           l = len
           while l > 0
-            ret.concat @sock.sysread(l, buf)
+            buf = @sock.sysread l
+            ret.concat buf
             l -= buf.bytesize
           end
         end
