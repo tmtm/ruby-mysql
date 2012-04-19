@@ -1266,9 +1266,15 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values ('0000-00-00'),('1000-01-01'),('9999-12-31')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.fetch.should == [Mysql::Time.new]
-    @s.fetch.should == [Mysql::Time.new(1000,1,1)]
-    @s.fetch.should == [Mysql::Time.new(9999,12,31)]
+    cols = @s.fetch
+    cols.should == [Mysql::Time.new]
+    cols.first.to_s.should == '0000-00-00'
+    cols = @s.fetch
+    cols.should == [Mysql::Time.new(1000,1,1)]
+    cols.first.to_s.should == '1000-01-01'
+    cols = @s.fetch
+    cols.should == [Mysql::Time.new(9999,12,31)]
+    cols.first.to_s.should == '9999-12-31'
   end
 
   it '#fetch datetime column' do

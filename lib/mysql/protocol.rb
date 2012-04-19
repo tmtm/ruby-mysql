@@ -93,7 +93,15 @@ class Mysql
         return data.slice!(0,4).unpack("e").first
       when Field::TYPE_DOUBLE
         return data.slice!(0,8).unpack("E").first
-      when Field::TYPE_DATE, Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
+      when Field::TYPE_DATE
+        len = data.slice!(0).ord
+        y, m, d = data.slice!(0,len).unpack("vCC")
+        t = Mysql::Time.new(y, m, d)
+        def t.to_s
+          sprintf "%04d-%02d-%02d", year, mon ,day
+        end
+        return t
+      when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
         len = data.slice!(0).ord
         y, m, d, h, mi, s, bs = data.slice!(0,len).unpack("vCCCCCV")
         return Mysql::Time.new(y, m, d, h, mi, s, bs)
