@@ -575,17 +575,14 @@ class Mysql
       len = nil
       begin
         Timeout.timeout @read_timeout do
-          header = @sock.sysread(4)
+          header = @sock.read(4)
+          raise EOFError unless header.length == 4
           len1, len2, seq = header.unpack("CvC")
           len = (len2 << 8) + len1
           raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
           @seq = (@seq + 1) % 256
-          l = len
-          while l > 0
-            buf = @sock.sysread l
-            ret.concat buf
-            l -= buf.bytesize
-          end
+          ret = @sock.read(len)
+          raise EOFError unless ret.length == len
         end
       rescue EOFError
         raise ClientError::ServerGoneError, 'The MySQL server has gone away'
