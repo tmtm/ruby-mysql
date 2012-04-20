@@ -28,92 +28,59 @@ class Mysql
       lcb(str.length)+str
     end
 
-    # convert LengthCodedBinary to Integer
-    # === Argument
-    # lcb :: [String] LengthCodedBinary. This value will be broken.
-    # === Return
-    # Integer or nil
-    def self.lcb2int!(lcb)
-      return nil if lcb.empty?
-      case v = lcb.slice!(0)
-      when ?\xfb
-        return nil
-      when ?\xfc
-        return lcb.slice!(0,2).unpack("v").first
-      when ?\xfd
-        c, v = lcb.slice!(0,3).unpack("Cv")
-        return (v << 8)+c
-      when ?\xfe
-        v1, v2 = lcb.slice!(0,8).unpack("VV")
-        return (v2 << 32)+v1
-      else
-        return v.ord
-      end
-    end
-
-    # convert LengthCodedString to String
-    # === Argument
-    # lcs :: [String] LengthCodedString. This value will be broken.
-    # === Return
-    # String or nil
-    def self.lcs2str!(lcs)
-      len = lcb2int! lcs
-      return len && lcs.slice!(0, len)
-    end
-
     def self.eof_packet?(data)
       data[0] == ?\xfe && data.length == 5
     end
 
     # Convert netdata to Ruby value
     # === Argument
-    # data :: [String] packet data. This will be broken.
+    # data :: [Packet] packet data
     # type :: [Integer] field type
     # unsigned :: [true or false] true if value is unsigned
     # === Return
     # Object :: converted value.
-    def self.net2value(data, type, unsigned)
+    def self.net2value(pkt, type, unsigned)
       case type
       when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB
-        return lcs2str!(data)
+        return pkt.lcs
       when Field::TYPE_TINY
-        v = data.slice!(0).ord
+        v = pkt.utiny
         return unsigned ? v : v < 128 ? v : v-256
       when Field::TYPE_SHORT
-        v = data.slice!(0,2).unpack("v").first
+        v = pkt.ushort
         return unsigned ? v : v < 32768 ? v : v-65536
       when Field::TYPE_INT24, Field::TYPE_LONG
-        v = data.slice!(0,4).unpack("V").first
+        v = pkt.ulong
         return unsigned ? v : v < 2**32/2 ? v : v-2**32
       when Field::TYPE_LONGLONG
-        n1, n2 = data.slice!(0,8).unpack("VV")
+        n1, n2 = pkt.ulong, pkt.ulong
         v = (n2 << 32) | n1
         return unsigned ? v : v < 2**64/2 ? v : v-2**64
       when Field::TYPE_FLOAT
-        return data.slice!(0,4).unpack("e").first
+        return pkt.read(4).unpack('e').first
       when Field::TYPE_DOUBLE
-        return data.slice!(0,8).unpack("E").first
+        return pkt.read(8).unpack('E').first
       when Field::TYPE_DATE
-        len = data.slice!(0).ord
-        y, m, d = data.slice!(0,len).unpack("vCC")
+        len = pkt.utiny
+        y, m, d = pkt.read(len).unpack("vCC")
         t = Mysql::Time.new(y, m, d)
         def t.to_s
           sprintf "%04d-%02d-%02d", year, mon ,day
         end
         return t
       when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
-        len = data.slice!(0).ord
-        y, m, d, h, mi, s, bs = data.slice!(0,len).unpack("vCCCCCV")
+        len = pkt.utiny
+        y, m, d, h, mi, s, bs = pkt.read(len).unpack("vCCCCCV")
         return Mysql::Time.new(y, m, d, h, mi, s, bs)
       when Field::TYPE_TIME
-        len = data.slice!(0).ord
-        sign, d, h, mi, s, sp = data.slice!(0,len).unpack("CVCCCV")
+        len = pkt.utiny
+        sign, d, h, mi, s, sp = pkt.read(len).unpack("CVCCCV")
         h = d.to_i * 24 + h.to_i
         return Mysql::Time.new(0, 0, 0, h, mi, s, sign!=0, sp)
       when Field::TYPE_YEAR
-        return data.slice!(0,2).unpack("v").first
+        return pkt.ushort
       when Field::TYPE_BIT
-        return lcs2str!(data)
+        return pkt.lcs
       else
         raise "not implemented: type=#{type}"
       end
@@ -344,14 +311,15 @@ class Mysql
       check_state :RESULT
       begin
         all_recs = []
-        until self.class.eof_packet?(data = read)
+        until (pkt = Packet.new(read)).eof?
           rec = fields.map do
-            s = self.class.lcs2str!(data)
+            s = pkt.lcs
             s && Charset.convert_encoding(s, charset.encoding)
           end
           all_recs.push rec
         end
-        @server_status = data[3].ord
+        pkt.read(3)
+        @server_status = pkt.utiny
         all_recs
       ensure
         set_state :READY
@@ -384,7 +352,7 @@ class Mysql
       begin
         reset
         write [COM_PROCESS_INFO].pack("C")
-        field_count = self.class.lcb2int!(read)
+        field_count = Packet.new(read).lcb
         fields = field_count.times.map{Field.new FieldPacket.parse(read)}
         read_eof_packet
         set_state :RESULT
@@ -512,14 +480,15 @@ class Mysql
     # === Return
     # [Array of Object] one record
     def stmt_parse_record_packet(data, fields, charset)
-      data.slice!(0)  # skip first byte
-      null_bit_map = data.slice!(0, (fields.length+7+2)/8).unpack("b*").first
+      pkt = Packet.new(data)
+      pkt.utiny  # skip first byte
+      null_bit_map = pkt.read((fields.length+7+2)/8).unpack("b*").first
       rec = fields.each_with_index.map do |f, i|
         if null_bit_map[i+2] == ?1
           nil
         else
           unsigned = f.flags & Field::UNSIGNED_FLAG != 0
-          v = self.class.net2value(data, f.type, unsigned)
+          v = self.class.net2value(pkt, f.type, unsigned)
           if v.is_a? Numeric or v.is_a? Mysql::Time
             v
           elsif f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
@@ -676,9 +645,17 @@ class Mysql
     # Initial packet
     class InitialPacket
       def self.parse(data)
-        protocol_version, server_version, thread_id, scramble_buff, f0,
-        server_capabilities, server_charset, server_status, f1,
-        rest_scramble_buff = data.unpack("CZ*Va8CvCva13Z13")
+        pkt = Packet.new(data)
+        protocol_version = pkt.utiny
+        server_version = pkt.string
+        thread_id = pkt.ulong
+        scramble_buff = pkt.read(8)
+        f0 = pkt.utiny
+        server_capabilities = pkt.ushort
+        server_charset = pkt.utiny
+        server_status = pkt.ushort
+        f1 = pkt.read(13)
+        rest_scramble_buff = pkt.string
         raise ProtocolError, "unsupported version: #{protocol_version}" unless protocol_version == VERSION
         raise ProtocolError, "invalid packet: f0=#{f0}" unless f0 == 0
         scramble_buff.concat rest_scramble_buff
@@ -695,12 +672,15 @@ class Mysql
     # Result packet
     class ResultPacket
       def self.parse(data)
-        field_count = Protocol.lcb2int! data
+        pkt = Packet.new(data)
+        field_count = pkt.lcb
         if field_count == 0
-          affected_rows = Protocol.lcb2int! data
-          insert_id = Protocol.lcb2int!(data)
-          server_status, warning_count, message = data.unpack("vva*")
-          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, Protocol.lcs2str!(message))
+          affected_rows = pkt.lcb
+          insert_id = pkt.lcb
+          server_status = pkt.ushort
+          warning_count = pkt.ushort
+          message = pkt.lcs
+          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, message)
         elsif field_count.nil?   # LOAD DATA LOCAL INFILE
           return self.new(nil, nil, nil, nil, nil, data)
         else
@@ -718,15 +698,23 @@ class Mysql
     # Field packet
     class FieldPacket
       def self.parse(data)
-        first = Protocol.lcs2str! data
-        db = Protocol.lcs2str! data
-        table = Protocol.lcs2str! data
-        org_table = Protocol.lcs2str! data
-        name = Protocol.lcs2str! data
-        org_name = Protocol.lcs2str! data
-        f0, charsetnr, length, type, flags, decimals, f1, data = data.unpack("CvVCvCva*")
+        pkt = Packet.new data
+        first = pkt.lcs
+        db = pkt.lcs
+        table = pkt.lcs
+        org_table = pkt.lcs
+        name = pkt.lcs
+        org_name = pkt.lcs
+        f0 = pkt.utiny
+        charsetnr = pkt.ushort
+        length = pkt.ulong
+        type = pkt.utiny
+        flags = pkt.ushort
+        decimals = pkt.utiny
+        f1 = pkt.ushort
+
         raise ProtocolError, "invalid packet: f1=#{f1}" unless f1 == 0
-        default = Protocol.lcs2str! data
+        default = pkt.lcs
         return self.new(db, table, org_table, name, org_name, charsetnr, length, type, flags, decimals, default)
       end
 
@@ -740,8 +728,13 @@ class Mysql
     # Prepare result packet
     class PrepareResultPacket
       def self.parse(data)
-        raise ProtocolError, "invalid packet" unless data.slice!(0) == ?\0
-        statement_id, field_count, param_count, f, warning_count = data.unpack("VvvCv")
+        pkt = Packet.new data
+        raise ProtocolError, "invalid packet" unless pkt.utiny == 0
+        statement_id = pkt.ulong
+        field_count = pkt.ushort
+        param_count = pkt.ushort
+        f = pkt.utiny
+        warning_count = pkt.ushort
         raise ProtocolError, "invalid packet" unless f == 0x00
         self.new statement_id, field_count, param_count, warning_count
       end

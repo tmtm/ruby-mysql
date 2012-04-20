@@ -15,6 +15,7 @@ class Mysql
   require "#{dir}/mysql/error"
   require "#{dir}/mysql/charset"
   require "#{dir}/mysql/protocol"
+  require "#{dir}/mysql/packet"
 
   VERSION            = 20906               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
