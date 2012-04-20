@@ -28,10 +28,6 @@ class Mysql
       lcb(str.length)+str
     end
 
-    def self.eof_packet?(data)
-      data[0] == ?\xfe && data.length == 5
-    end
-
     # Convert netdata to Ruby value
     # === Argument
     # data :: [Packet] packet data
@@ -228,7 +224,7 @@ class Mysql
       end
       netpw = encrypt_password passwd, init_packet.scramble_buff
       write AuthenticationPacket.serialize(client_flags, 1024**3, @charset.number, user, netpw, db)
-      raise ProtocolError, 'The old style password is not supported' if read == "\xfe"
+      raise ProtocolError, 'The old style password is not supported' if read.to_s == "\xfe"
       set_state :READY
     end
 
@@ -311,7 +307,7 @@ class Mysql
       check_state :RESULT
       begin
         all_recs = []
-        until (pkt = Packet.new(read)).eof?
+        until (pkt = read).eof?
           rec = fields.map do
             s = pkt.lcs
             s && Charset.convert_encoding(s, charset.encoding)
@@ -337,7 +333,7 @@ class Mysql
         reset
         write [COM_FIELD_LIST, table, 0, field].pack("Ca*Ca*")
         fields = []
-        until self.class.eof_packet?(data = read)
+        until (data = read).eof?
           fields.push Field.new(FieldPacket.parse(data))
         end
         return fields
@@ -352,7 +348,7 @@ class Mysql
       begin
         reset
         write [COM_PROCESS_INFO].pack("C")
-        field_count = Packet.new(read).lcb
+        field_count = read.lcb
         fields = field_count.times.map{Field.new FieldPacket.parse(read)}
         read_eof_packet
         set_state :RESULT
@@ -447,7 +443,7 @@ class Mysql
       check_state :RESULT
       begin
         all_recs = []
-        until self.class.eof_packet?(data = read)
+        until (data = read).eof?
           all_recs.push stmt_parse_record_packet(data, fields, charset)
         end
         all_recs
@@ -474,13 +470,12 @@ class Mysql
 
     # Parse statement result packet
     # === Argument
-    # data    :: [String]
+    # pkt     :: [Packet]
     # fields  :: [Array of Fields]
     # charset :: [Mysql::Charset]
     # === Return
     # [Array of Object] one record
-    def stmt_parse_record_packet(data, fields, charset)
-      pkt = Packet.new(data)
+    def stmt_parse_record_packet(pkt, fields, charset)
       pkt.utiny  # skip first byte
       null_bit_map = pkt.read((fields.length+7+2)/8).unpack("b*").first
       rec = fields.each_with_index.map do |f, i|
@@ -536,7 +531,7 @@ class Mysql
 
     # Read one packet data
     # === Return
-    # [String] packet data
+    # [Packet] packet data
     # === Exception
     # [ProtocolError] invalid packet sequence number
     def read
@@ -573,7 +568,7 @@ class Mysql
         end
         raise Mysql::ServerError.new(message, @sqlstate)
       end
-      ret
+      Packet.new(ret)
     end
 
     # Write one packet data
@@ -612,8 +607,7 @@ class Mysql
     # === Exception
     # [ProtocolError] packet is not EOF
     def read_eof_packet
-      data = read
-      raise ProtocolError, "packet is not EOF" unless self.class.eof_packet? data
+      raise ProtocolError, "packet is not EOF" unless read.eof?
     end
 
     # Send simple command
@@ -625,7 +619,7 @@ class Mysql
       synchronize do
         reset
         write packet
-        read
+        read.to_s
       end
     end
 
@@ -644,8 +638,7 @@ class Mysql
 
     # Initial packet
     class InitialPacket
-      def self.parse(data)
-        pkt = Packet.new(data)
+      def self.parse(pkt)
         protocol_version = pkt.utiny
         server_version = pkt.string
         thread_id = pkt.ulong
@@ -671,8 +664,7 @@ class Mysql
 
     # Result packet
     class ResultPacket
-      def self.parse(data)
-        pkt = Packet.new(data)
+      def self.parse(pkt)
         field_count = pkt.lcb
         if field_count == 0
           affected_rows = pkt.lcb
@@ -682,7 +674,7 @@ class Mysql
           message = pkt.lcs
           return self.new(field_count, affected_rows, insert_id, server_status, warning_count, message)
         elsif field_count.nil?   # LOAD DATA LOCAL INFILE
-          return self.new(nil, nil, nil, nil, nil, data)
+          return self.new(nil, nil, nil, nil, nil, pkt.to_s)
         else
           return self.new(field_count)
         end
@@ -697,8 +689,7 @@ class Mysql
 
     # Field packet
     class FieldPacket
-      def self.parse(data)
-        pkt = Packet.new data
+      def self.parse(pkt)
         first = pkt.lcs
         db = pkt.lcs
         table = pkt.lcs
@@ -727,8 +718,7 @@ class Mysql
 
     # Prepare result packet
     class PrepareResultPacket
-      def self.parse(data)
-        pkt = Packet.new data
+      def self.parse(pkt)
         raise ProtocolError, "invalid packet" unless pkt.utiny == 0
         statement_id = pkt.ulong
         field_count = pkt.ushort

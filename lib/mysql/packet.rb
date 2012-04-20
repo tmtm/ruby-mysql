@@ -53,5 +53,10 @@ class Mysql
     def eof?
       @data[0] == ?\xfe && @data.length == 5
     end
+
+    def to_s
+      @data
+    end
+
   end
 end
