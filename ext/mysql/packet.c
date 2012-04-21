@@ -96,7 +96,7 @@ static VALUE lcs(VALUE obj, VALUE len)
 static VALUE read(VALUE obj, VALUE len)
 {
     data_t *data;
-    size_t l = NUM2SIZET(len);
+    unsigned long long  l = NUM2ULL(len);
     VALUE ret;
 
     Data_Get_Struct(obj, data_t, data);
