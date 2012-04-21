@@ -305,13 +305,15 @@ class Mysql
     # [Array of Array of String] all records
     def retr_all_records(fields)
       check_state :RESULT
+      enc = charset.encoding
       begin
         all_recs = []
         until (pkt = read).eof?
           rec = fields.map do |f|
-            s = pkt.lcs
-            s &&= Charset.convert_encoding(s, enc)
-            f.max_length = s.length if s && s.length > f.max_length
+            if s = pkt.lcs
+              s = Charset.convert_encoding(s, enc)
+              f.max_length = s.length if s.length > f.max_length
+            end
             s
           end
           all_recs.push rec

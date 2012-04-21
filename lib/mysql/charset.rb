@@ -236,7 +236,7 @@ class Mysql
       }
 
       def self.to_binary(value)
-        value.dup.force_encoding Encoding::ASCII_8BIT
+        value.force_encoding Encoding::ASCII_8BIT
       end
 
       # convert raw to encoding and convert to Encoding.default_internal
@@ -246,7 +246,7 @@ class Mysql
       # === Return
       # result [String]
       def self.convert_encoding(raw, encoding)
-        raw.dup.force_encoding(encoding).encode
+        raw.force_encoding(encoding).encode
       end
 
       # retrun corresponding Ruby encoding
