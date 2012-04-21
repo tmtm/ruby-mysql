@@ -1,5 +1,3 @@
-$LOAD_PATH.unshift "#{File.dirname __FILE__}/../lib"
-
 require 'mysql/packet'
 
 describe Mysql::Packet do
@@ -23,9 +21,15 @@ describe Mysql::Packet do
   end
 
   describe '#lcs' do
-    context "for '03414243'" do
-      let(:data){"\x03\x41\x42\x43"}
-      it{subject.lcs.should == 'ABC'}
+    [
+      ["\x03\x41\x42\x43", 'ABC'],
+      ["\x01",             ''],
+      ["",                 nil],
+    ].each do |data, result|
+      context "for '#{_ data}'" do
+        let(:data){data}
+        it{subject.lcs.should == result}
+      end
     end
   end
 

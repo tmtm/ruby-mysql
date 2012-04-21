@@ -10,12 +10,15 @@
 #  end
 class Mysql
 
-  dir = File.dirname __FILE__
-  require "#{dir}/mysql/constants"
-  require "#{dir}/mysql/error"
-  require "#{dir}/mysql/charset"
-  require "#{dir}/mysql/protocol"
-  require "#{dir}/mysql/packet"
+  require "mysql/constants"
+  require "mysql/error"
+  require "mysql/charset"
+  require "mysql/protocol"
+  begin
+    require "mysql/packet.so"
+  rescue LoadError
+    require "mysql/packet.rb"
+  end
 
   VERSION            = 20906               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename

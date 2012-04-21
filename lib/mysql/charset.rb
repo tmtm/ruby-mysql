@@ -1,8 +1,6 @@
 # Copyright (C) 2008-2010 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
-require "#{File.dirname __FILE__}/error"
-
 class Mysql
   class Charset
     def initialize(number, name, csname)
