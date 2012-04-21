@@ -589,6 +589,7 @@ class Mysql
       @db, @table, @org_table, @name, @org_name, @charsetnr, @length, @type, @flags, @decimals, @default =
         packet.db, packet.table, packet.org_table, packet.name, packet.org_name, packet.charsetnr, packet.length, packet.type, packet.flags, packet.decimals, packet.default
       @flags |= NUM_FLAG if is_num_type?
+      @max_length = 0
     end
 
     def hash
@@ -755,12 +756,6 @@ class Mysql
       super fields
       return unless protocol
       @records = protocol.retr_all_records @fields
-      # for Field#max_length
-      @records.each do |rec|
-        rec.zip(fields) do |v, f|
-          f.max_length = [v ? v.length : 0, f.max_length || 0].max
-        end
-      end
     end
 
     # Return current field

@@ -308,9 +308,11 @@ class Mysql
       begin
         all_recs = []
         until (pkt = read).eof?
-          rec = fields.map do
+          rec = fields.map do |f|
             s = pkt.lcs
-            s && Charset.convert_encoding(s, charset.encoding)
+            s &&= Charset.convert_encoding(s, enc)
+            f.max_length = s.length if s && s.length > f.max_length
+            s
           end
           all_recs.push rec
         end
