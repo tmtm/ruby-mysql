@@ -1,13 +1,14 @@
 Gem::Specification.new do |s|
-  s.name = 'ruby-mysql'
+  s.name = 'ruby-mysql-ext'
   s.version = '2.9.7'
-  s.summary = 'MySQL connector'
+  s.summary = 'MySQL connector with extension'
   s.authors = ['Tomita Masahiro']
   s.date = '2012-04-22'
-  s.description = 'This is MySQL connector. pure Ruby version'
+  s.description = 'This is MySQL connector with C extension.'
   s.email = 'tommy@tmtm.org'
+  s.extensions = ['ext/mysql/extconf.rb']
   s.homepage = 'http://github.com/tmtm/ruby-mysql'
-  s.files = ['README.rdoc', 'lib/mysql.rb', 'lib/mysql/constants.rb', 'lib/mysql/protocol.rb', 'lib/mysql/charset.rb', 'lib/mysql/error.rb', 'lib/mysql/packet.rb']
+  s.files = ['README.rdoc', 'lib/mysql.rb', 'lib/mysql/constants.rb', 'lib/mysql/protocol.rb', 'lib/mysql/charset.rb', 'lib/mysql/error.rb', 'ext/mysql/packet.c']
   s.extra_rdoc_files = ['README.rdoc']
   s.test_files = ['spec/mysql_spec.rb', 'spec/mysql/packet_spec.rb']
   s.has_rdoc = true
