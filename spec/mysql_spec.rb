@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 require "tempfile"
 
-$LOAD_PATH.unshift "#{File.dirname __FILE__}/../lib"
-
 require "mysql"
 
 # MYSQL_USER must have ALL privilege for MYSQL_DATABASE.* and RELOAD privilege for *.*
