@@ -5,6 +5,56 @@ typedef struct {
     unsigned char *endp;
 } data_t;
 
+static VALUE s_lcb(VALUE klass, VALUE val)
+{
+    unsigned long long n;
+    unsigned char buf[9];
+
+    if (val == Qnil)
+        return rb_str_new("\xfb", 1);
+    n = NUM2ULL(val);
+    if (n < 251) {
+        buf[0] = n;
+        return rb_str_new(buf, 1);
+    }
+    if (n < 65536) {
+        buf[0] = '\xfc';
+        buf[1] = n % 256;
+        buf[2] = n / 256;
+        return rb_str_new(buf, 3);
+    }
+    if (n < 16777216) {
+        buf[0] = '\xfd';
+        buf[1] = n % 256;
+        n /= 256;
+        buf[2] = n % 256;
+        buf[3] = n / 256;
+        return rb_str_new(buf, 4);
+    }
+    buf[0] = '\xfe';
+    buf[1] = n % 256;
+    n /= 256;
+    buf[2] = n % 256;
+    n /= 256;
+    buf[3] = n % 256;
+    n /= 256;
+    buf[4] = n % 256;
+    n /= 256;
+    buf[5] = n % 256;
+    n /= 256;
+    buf[6] = n % 256;
+    n /= 256;
+    buf[7] = n % 256;
+    buf[8] = n / 256;
+    return rb_str_new(buf, 9);
+}
+
+static VALUE s_lcs(VALUE klass, VALUE val)
+{
+    VALUE ret = s_lcb(klass, ULONG2NUM(RSTRING_LEN(val)));
+    return rb_str_cat(ret, RSTRING_PTR(val), RSTRING_LEN(val));
+}
+
 static VALUE allocate(VALUE klass)
 {
     data_t *data;
@@ -181,6 +231,8 @@ void Init_packet(void)
     cMysql = rb_define_class("Mysql", rb_cObject);
     cPacket = rb_define_class_under(cMysql, "Packet", rb_cObject);
     rb_define_alloc_func(cPacket, allocate);
+    rb_define_singleton_method(cPacket, "lcb", s_lcb, 1);
+    rb_define_singleton_method(cPacket, "lcs", s_lcs, 1);
     rb_define_method(cPacket, "initialize", initialize, 1);
     rb_define_method(cPacket, "lcb", lcb, 0);
     rb_define_method(cPacket, "lcs", lcs, 0);

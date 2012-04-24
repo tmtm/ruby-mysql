@@ -13,21 +13,6 @@ class Mysql
     VERSION = 10
     MAX_PACKET_LENGTH = 2**24-1
 
-    # convert Numeric to LengthCodedBinary
-    def self.lcb(num)
-      return "\xfb" if num.nil?
-      return [num].pack("C") if num < 251
-      return [252, num].pack("Cv") if num < 65536
-      return [253, num&0xffff, num>>16].pack("CvC") if num < 16777216
-      return [254, num&0xffffffff, num>>32].pack("CVV")
-    end
-
-    # convert String to LengthCodedString
-    def self.lcs(str)
-      str = Charset.to_binary str
-      lcb(str.length)+str
-    end
-
     # Convert netdata to Ruby value
     # === Argument
     # data :: [Packet] packet data
@@ -134,7 +119,7 @@ class Mysql
         val = [v].pack("E")
       when String
         type = Field::TYPE_STRING
-        val = lcs(v)
+        val = Packet.lcs(v)
       when Mysql::Time, ::Time
         type = Field::TYPE_DATETIME
         val = [7, v.year, v.month, v.day, v.hour, v.min, v.sec].pack("CvCCCCC")
@@ -746,10 +731,10 @@ class Mysql
         [
           client_flags,
           max_packet_size,
-          Protocol.lcb(charset_number),
+          Packet.lcb(charset_number),
           "",                   # always 0x00 * 23
           username,
-          Protocol.lcs(scrambled_password),
+          Packet.lcs(scrambled_password),
           databasename
         ].pack("VVa*a23Z*A*Z*")
       end

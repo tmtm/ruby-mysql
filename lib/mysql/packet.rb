@@ -1,5 +1,20 @@
 class Mysql
   class Packet
+    # convert Numeric to LengthCodedBinary
+    def self.lcb(num)
+      return "\xfb" if num.nil?
+      return [num].pack("C") if num < 251
+      return [252, num].pack("Cv") if num < 65536
+      return [253, num&0xffff, num>>16].pack("CvC") if num < 16777216
+      return [254, num&0xffffffff, num>>32].pack("CVV")
+    end
+
+    # convert String to LengthCodedString
+    def self.lcs(str)
+      str = Charset.to_binary str
+      lcb(str.length)+str
+    end
+
     def initialize(data)
       @data = data
     end

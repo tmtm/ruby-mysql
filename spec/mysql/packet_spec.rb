@@ -1,5 +1,4 @@
-require 'mysql/packet'
-
+# coding: binary
 describe Mysql::Packet do
   def self._(s)
     s.unpack('H*').first
@@ -93,4 +92,27 @@ describe Mysql::Packet do
     end
   end
 
+end
+
+describe 'Mysql::Packet.lcb' do
+  [
+    [nil,      "\xfb"],
+    [1,        "\x01"],
+    [250,      "\xfa"],
+    [251,      "\xfc\xfb\x00"],
+    [65535,    "\xfc\xff\xff"],
+    [65536,    "\xfd\x00\x00\x01"],
+    [16777215, "\xfd\xff\xff\xff"],
+    [16777216, "\xfe\x00\x00\x00\x01\x00\x00\x00\x00"],
+    [0xffffffffffffffff, "\xfe\xff\xff\xff\xff\xff\xff\xff\xff"],
+  ].each do |val, result|
+    context "with #{val}" do
+      it{Mysql::Packet.lcb(val).should == result}
+    end
+  end
+end
+
+describe 'Mysql::Packet.lcs' do
+  it{Mysql::Packet.lcs("hoge").should == "\x04hoge"}
+  it{Mysql::Packet.lcs("あいう".force_encoding("UTF-8")).should == "\x09\xe3\x81\x82\xe3\x81\x84\xe3\x81\x86"}
 end
