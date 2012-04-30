@@ -581,7 +581,7 @@ class Mysql
     attr_reader :decimals       # number of decimals
     attr_reader :default        # defualt value
     alias :def :default
-    attr_accessor :max_length   # maximum width of the field for the result set
+    attr_accessor :result       # :nodoc:
 
     # === Argument
     # [Protocol::FieldPacket]
@@ -589,7 +589,7 @@ class Mysql
       @db, @table, @org_table, @name, @org_name, @charsetnr, @length, @type, @flags, @decimals, @default =
         packet.db, packet.table, packet.org_table, packet.name, packet.org_name, packet.charsetnr, packet.length, packet.type, packet.flags, packet.decimals, packet.default
       @flags |= NUM_FLAG if is_num_type?
-      @max_length = 0
+      @max_length = nil
     end
 
     def hash
@@ -599,7 +599,7 @@ class Mysql
         "def"        => @default,
         "type"       => @type,
         "length"     => @length,
-        "max_length" => @max_length,
+        "max_length" => max_length,
         "flags"      => @flags,
         "decimals"   => @decimals
       }
@@ -623,6 +623,16 @@ class Mysql
     def is_pri_key?
       @flags & PRI_KEY_FLAG != 0
     end
+
+    # maximum width of the field for the result set
+    def max_length
+      return @max_length if @max_length
+      @max_length = 0
+      @result.calculate_field_max_length if @result
+      @max_length
+    end
+
+    attr_writer :max_length
 
     private
 
@@ -666,10 +676,10 @@ class Mysql
     def fetch
       @fetched_record = nil
       return nil if @index >= @records.size
-      rec = @records[@index]
+      @records[@index] = @records[@index].to_a if @records[@index].is_a? RawRecord
+      @fetched_record = @records[@index]
       @index += 1
-      @fetched_record = rec
-      return rec
+      return @fetched_record
     end
     alias fetch_row fetch
 
@@ -755,7 +765,22 @@ class Mysql
     def initialize(fields, protocol=nil)
       super fields
       return unless protocol
-      @records = protocol.retr_all_records @fields
+      @records = protocol.retr_all_records fields.size
+      fields.each{|f| f.result = self}  # for calculating max_field
+    end
+
+    # calculate max_length of all fields
+    def calculate_field_max_length
+      max_length = Array.new(@fields.size, 0)
+      @records.each_with_index do |rec, i|
+        rec = @records[i] = rec.to_a if rec.is_a? RawRecord
+        max_length.each_index do |i|
+          max_length[i] = rec[i].length if rec[i] && rec[i].length > max_length[i]
+        end
+      end
+      max_length.each_with_index do |len, i|
+        @fields[i].max_length = len
+      end
     end
 
     # Return current field

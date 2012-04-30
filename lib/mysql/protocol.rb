@@ -285,23 +285,16 @@ class Mysql
 
     # Retrieve all records for simple query
     # === Argument
-    # fields :: [Array of Mysql::Field] field list
+    # nfields :: [Integer] number of fields
     # === Return
     # [Array of Array of String] all records
-    def retr_all_records(fields)
+    def retr_all_records(nfields)
       check_state :RESULT
       enc = charset.encoding
       begin
         all_recs = []
         until (pkt = read).eof?
-          rec = fields.map do |f|
-            if s = pkt.lcs
-              s = Charset.convert_encoding(s, enc)
-              f.max_length = s.length if s.length > f.max_length
-            end
-            s
-          end
-          all_recs.push rec
+          all_recs.push RawRecord.new(pkt, nfields, enc)
         end
         pkt.read(3)
         @server_status = pkt.utiny
@@ -765,4 +758,20 @@ class Mysql
 
     end
   end
+
+  class RawRecord
+    def initialize(packet, nfields, encoding)
+      @packet, @nfields, @encoding = packet, nfields, encoding
+    end
+
+    def to_a
+      @nfields.times.map do
+        if s = @packet.lcs
+          s = Charset.convert_encoding(s, @encoding)
+        end
+        s
+      end
+    end
+  end
+
 end
