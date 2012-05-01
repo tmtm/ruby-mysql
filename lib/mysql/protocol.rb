@@ -426,7 +426,7 @@ class Mysql
       begin
         all_recs = []
         until (data = read).eof?
-          all_recs.push stmt_parse_record_packet(data, fields, charset)
+          all_recs.push StmtRawRecord.new(data, fields, charset.encoding)
         end
         all_recs
       ensure
@@ -449,34 +449,6 @@ class Mysql
     end
 
     private
-
-    # Parse statement result packet
-    # === Argument
-    # pkt     :: [Packet]
-    # fields  :: [Array of Fields]
-    # charset :: [Mysql::Charset]
-    # === Return
-    # [Array of Object] one record
-    def stmt_parse_record_packet(pkt, fields, charset)
-      pkt.utiny  # skip first byte
-      null_bit_map = pkt.read((fields.length+7+2)/8).unpack("b*").first
-      rec = fields.each_with_index.map do |f, i|
-        if null_bit_map[i+2] == ?1
-          nil
-        else
-          unsigned = f.flags & Field::UNSIGNED_FLAG != 0
-          v = self.class.net2value(pkt, f.type, unsigned)
-          if v.is_a? Numeric or v.is_a? Mysql::Time
-            v
-          elsif f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
-            Charset.to_binary(v)
-          else
-            Charset.convert_encoding(v, charset.encoding)
-          end
-        end
-      end
-      rec
-    end
 
     def check_state(st)
       raise 'command out of sync' unless @state == st
@@ -774,4 +746,40 @@ class Mysql
     end
   end
 
+  class StmtRawRecord
+    # === Argument
+    # pkt     :: [Packet]
+    # fields  :: [Array of Fields]
+    # encoding:: [Encoding]
+    def initialize(packet, fields, encoding)
+      @packet, @fields, @encoding = packet, fields, encoding
+    end
+
+    # Parse statement result packet
+    # === Return
+    # [Array of Object] one record
+    def parse_record_packet
+      @packet.utiny  # skip first byte
+      null_bit_map = @packet.read((@fields.length+7+2)/8).unpack("b*").first
+      rec = @fields.each_with_index.map do |f, i|
+        if null_bit_map[i+2] == ?1
+          nil
+        else
+          unsigned = f.flags & Field::UNSIGNED_FLAG != 0
+          v = Protocol.net2value(@packet, f.type, unsigned)
+          if v.is_a? Numeric or v.is_a? Mysql::Time
+            v
+          elsif f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
+            Charset.to_binary(v)
+          else
+            Charset.convert_encoding(v, @encoding)
+          end
+        end
+      end
+      rec
+    end
+
+    alias to_a parse_record_packet
+
+  end
 end

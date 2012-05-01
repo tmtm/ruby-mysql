@@ -676,7 +676,7 @@ class Mysql
     def fetch
       @fetched_record = nil
       return nil if @index >= @records.size
-      @records[@index] = @records[@index].to_a if @records[@index].is_a? RawRecord
+      @records[@index] = @records[@index].to_a unless @records[@index].is_a? Array
       @fetched_record = @records[@index]
       @index += 1
       return @fetched_record
