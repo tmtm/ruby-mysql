@@ -126,7 +126,7 @@ static VALUE lcb(VALUE obj)
     return ULL2NUM(n);
 }
 
-static VALUE lcs(VALUE obj, VALUE len)
+static VALUE lcs(VALUE obj)
 {
     data_t *data;
     unsigned long long l;
