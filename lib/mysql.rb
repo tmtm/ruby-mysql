@@ -2,7 +2,7 @@
 # mailto:tommy@tmtm.org
 
 # MySQL connection class.
-# === Example
+# @example
 #  my = Mysql.connect('hostname', 'user', 'password', 'dbname')
 #  res = my.query 'select col1,col2 from tbl where id=123'
 #  res.each do |c1, c2|
@@ -24,13 +24,17 @@ class Mysql
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
-  attr_reader :charset               # character set of MySQL connection
-  attr_reader :protocol              # :nodoc:
+  # @return [Mysql::Charset] character set of MySQL connection
+  attr_reader :charset
+  # @private
+  attr_reader :protocol
 
+  # @return [Boolean] if true, {#query} return {Mysql::Result}.
   attr_accessor :query_with_result
 
   class << self
     # Make Mysql object without connecting.
+    # @return [Mysql]
     def init
       my = self.allocate
       my.instance_eval{initialize}
@@ -38,7 +42,8 @@ class Mysql
     end
 
     # Make Mysql object and connect to mysqld.
-    # Arguments are same as Mysql#connect.
+    # @param args same as arguments for {#connect}.
+    # @return [Mysql]
     def new(*args)
       my = self.init
       my.connect(*args)
@@ -48,8 +53,8 @@ class Mysql
     alias connect new
 
     # Escape special character in string.
-    # === Argument
-    # str :: [String]
+    # @param [String] str
+    # @return [String]
     def escape_string(str)
       str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
         case s
@@ -63,22 +68,20 @@ class Mysql
     end
     alias quote escape_string
 
-    # Return client version as String.
-    # This value is dummy.
+    # @return [String] client version. This value is dummy for MySQL/Ruby compatibility.
     def client_info
       "5.0.0"
     end
     alias get_client_info client_info
 
-    # Return client version as Integer.
-    # This value is dummy. If you want to get version of this library, use Mysql::VERSION.
+    # @return [Integer] client version. This value is dummy for MySQL/Ruby compatibility.
     def client_version
       50000
     end
     alias get_client_version client_version
   end
 
-  def initialize  # :nodoc:
+  def initialize
     @fields = nil
     @protocol = nil
     @charset = nil
@@ -95,16 +98,14 @@ class Mysql
   end
 
   # Connect to mysqld.
-  # === Argument
-  # host   :: [String / nil] hostname mysqld running
-  # user   :: [String / nil] username to connect to mysqld
-  # passwd :: [String / nil] password to connect to mysqld
-  # db     :: [String / nil] initial database name
-  # port   :: [Integer / nil] port number (used if host is not 'localhost' or nil)
-  # socket :: [String / nil] socket file name (used if host is 'localhost' or nil)
-  # flag   :: [Integer / nil] connection flag. Mysql::CLIENT_* ORed
-  # === Return
-  # self
+  # @param [String / nil] host hostname mysqld running
+  # @param [String / nil] user username to connect to mysqld
+  # @param [String / nil] passwd password to connect to mysqld
+  # @param [String / nil] db initial database name
+  # @param [Integer / nil] port port number (used if host is not 'localhost' or nil)
+  # @param [String / nil] socket socket file name (used if host is 'localhost' or nil)
+  # @param [Integer / nil] flag connection flag. Mysql::CLIENT_* ORed
+  # @return self
   def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=0)
     if flag & CLIENT_COMPRESS != 0
       warn 'unsupported flag: CLIENT_COMPRESS'
@@ -120,6 +121,7 @@ class Mysql
   alias real_connect connect
 
   # Disconnect from mysql.
+  # @return [Mysql] self
   def close
     if @protocol
       @protocol.quit_command
@@ -129,6 +131,7 @@ class Mysql
   end
 
   # Disconnect from mysql without QUIT packet.
+  # @return [Mysql] self
   def close!
     if @protocol
       @protocol.close
@@ -142,11 +145,9 @@ class Mysql
   # Available options:
   #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_READ_TIMEOUT,
   #   Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
-  # === Argument
-  # opt   :: [Integer] option
-  # value :: option value that is depend on opt
-  # === Return
-  # self
+  # @param [Integer] opt option
+  # @param [Integer] value option value that is depend on opt
+  # @return [Mysql] self
   def options(opt, value=nil)
     case opt
     when Mysql::INIT_COMMAND
@@ -183,9 +184,11 @@ class Mysql
   end
 
   # Escape special character in MySQL.
-  # === Note
+  #
   # In Ruby 1.8, this is not safe for multibyte charset such as 'SJIS'.
   # You should use place-holder in prepared-statement.
+  # @param [String] str
+  # return [String]
   def escape_string(str)
     if not defined? Encoding and @charset.unsafe
       raise ClientError, 'Mysql#escape_string is called for unsafe multibyte charset'
@@ -194,25 +197,20 @@ class Mysql
   end
   alias quote escape_string
 
-  # === Return
-  # [String] client version
+  # @return [String] client version
   def client_info
     self.class.client_info
   end
   alias get_client_info client_info
 
-  # === Return
-  # [Integer] client version
+  # @return [Integer] client version
   def client_version
     self.class.client_version
   end
   alias get_client_version client_version
 
   # Set charset of MySQL connection.
-  # === Argument
-  # cs :: [String / Mysql::Charset]
-  # === Return
-  # cs
+  # @param [String / Mysql::Charset] cs
   def charset=(cs)
     charset = cs.is_a?(Charset) ? cs : Charset.by_name(cs)
     if @protocol
@@ -223,122 +221,101 @@ class Mysql
     cs
   end
 
-  # === Return
-  # [String] charset name
+  # @return [String] charset name
   def character_set_name
     @charset.name
   end
 
-  # === Return
-  # [Integer] last error number
+  # @return [Integer] last error number
   def errno
     @last_error ? @last_error.errno : 0
   end
 
-  # === Return
-  # [String] last error message
+  # @return [String] last error message
   def error
     @last_error && @last_error.error
   end
 
-  # === Return
-  # [String] sqlstate for last error
+  # @return [String] sqlstate for last error
   def sqlstate
     @last_error ? @last_error.sqlstate : "00000"
   end
 
-  # === Return
-  # [Integer] number of columns for last query
+  # @return [Integer] number of columns for last query
   def field_count
     @fields.size
   end
 
-  # === Return
-  # [String] connection type
+  # @return [String] connection type
   def host_info
     @host_info
   end
   alias get_host_info host_info
 
-  # === Return
-  # [Integer] protocol version
+  # @return [Integer] protocol version
   def proto_info
     Mysql::Protocol::VERSION
   end
   alias get_proto_info proto_info
 
-  # === Return
-  # [String] server version
+  # @return [String] server version
   def server_info
     check_connection
     @protocol.server_info
   end
   alias get_server_info server_info
 
-  # === Return
-  # [Integer] server version
+  # @return [Integer] server version
   def server_version
     check_connection
     @protocol.server_version
   end
   alias get_server_version server_version
 
-  # === Return
-  # [String] information for last query
+  # @return [String] information for last query
   def info
     @protocol && @protocol.message
   end
 
-  # === Return
-  # [Integer] number of affected records by insert/update/delete.
+  # @return [Integer] number of affected records by insert/update/delete.
   def affected_rows
     @protocol ? @protocol.affected_rows : 0
   end
 
-  # === Return
-  # [Integer] latest auto_increment value
+  # @return [Integer] latest auto_increment value
   def insert_id
     @protocol ? @protocol.insert_id : 0
   end
 
-  # === Return
-  # [Integer] number of warnings for previous query
+  # @return [Integer] number of warnings for previous query
   def warning_count
     @protocol ? @protocol.warning_count : 0
   end
 
   # Kill query.
-  # === Argument
-  # pid :: [Integer] thread id
-  # === Return
-  # self
+  # @param [Integer] pid thread id
+  # @return [Mysql] self
   def kill(pid)
     check_connection
     @protocol.kill_command pid
     self
   end
 
-  # Return database list.
-  # === Argument
-  # db :: [String] database name that may contain wild card.
-  # === Return
-  # [Array of String] database list
+  # database list.
+  # @param [String] db database name that may contain wild card.
+  # @return [Array<String>] database list
   def list_dbs(db=nil)
     db &&= db.gsub(/[\\\']/){"\\#{$&}"}
     query(db ? "show databases like '#{db}'" : "show databases").map(&:first)
   end
 
   # Execute query string.
-  # === Argument
-  # str :: [String] Query.
-  # block :: If it is given then it is evaluated with Result object as argument.
-  # === Return
-  # Mysql::Result :: If result set exist.
-  # nil :: If the query does not return result set.
-  # self :: If block is specified.
-  # === Block parameter
-  # [Mysql::Result]
-  # === Example
+  # @param [String] str Query.
+  # @yield [Mysql::Result] evaluated per query.
+  # @return [Mysql::Result] If {#query_with_result} is true and result set exist.
+  # @return [nil] If {#query_with_result} is true and the query does not return result set.
+  # @return [Mysql] If {#query_with_result} is false or block is specified
+  # @example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
   def query(str, &block)
     check_connection
@@ -370,8 +347,7 @@ class Mysql
   alias real_query query
 
   # Get all data for last query if query_with_result is false.
-  # === Return
-  # [Mysql::Result]
+  # @return [Mysql::Result]
   def store_result
     check_connection
     raise ClientError, 'invalid usage' unless @result_exist
@@ -380,39 +356,35 @@ class Mysql
     res
   end
 
-  # Returns thread ID.
-  # === Return
-  # [Integer] Thread ID
+  # @return [Integer] Thread ID
   def thread_id
     check_connection
     @protocol.thread_id
   end
 
-  # Use result of query. The result data is retrieved when you use Mysql::Result#fetch_row.
+  # Use result of query. The result data is retrieved when you use Mysql::Result#fetch.
+  # @return [Mysql::Result]
   def use_result
     store_result
   end
 
   # Set server option.
-  # === Argument
-  # opt :: [Integer] Mysql::OPTION_MULTI_STATEMENTS_ON or Mysql::OPTION_MULTI_STATEMENTS_OFF
-  # === Return
-  # self
+  # @param [Integer] opt {Mysql::OPTION_MULTI_STATEMENTS_ON} or {Mysql::OPTION_MULTI_STATEMENTS_OFF}
+  # @return [Mysql] self
   def set_server_option(opt)
     check_connection
     @protocol.set_option_command opt
     self
   end
 
-  # true if multiple queries are specified and unexecuted queries exists.
+  # @return [Boolean] true if multiple queries are specified and unexecuted queries exists.
   def more_results
     @protocol.server_status & SERVER_MORE_RESULTS_EXISTS != 0
   end
   alias more_results? more_results
 
   # execute next query if multiple queries are specified.
-  # === Return
-  # true if next query exists.
+  # @return [Boolean] true if next query exists.
   def next_result
     return false unless more_results
     check_connection
@@ -426,30 +398,26 @@ class Mysql
   end
 
   # Parse prepared-statement.
-  # === Argument
-  # str :: [String] query string
-  # === Return
-  # Mysql::Statement :: Prepared-statement object
+  # @param [String] str query string
+  # @return [Mysql::Stmt] Prepared-statement object
   def prepare(str)
     st = Stmt.new @protocol, @charset
     st.prepare str
     st
   end
 
+  # @private
   # Make empty prepared-statement object.
-  # === Return
-  # Mysql::Stmt :: If block is not specified.
+  # @return [Mysql::Stmt] If block is not specified.
   def stmt_init
     Stmt.new @protocol, @charset
   end
 
   # Returns Mysql::Result object that is empty.
   # Use fetch_fields to get list of fields.
-  # === Argument
-  # table :: [String] table name.
-  # field :: [String] field name that may contain wild card.
-  # === Return
-  # [Mysql::Result]
+  # @param [String] table table name.
+  # @param [String] field field name that may contain wild card.
+  # @return [Mysql::Result]
   def list_fields(table, field=nil)
     check_connection
     begin
@@ -462,9 +430,7 @@ class Mysql
     end
   end
 
-  # Returns Mysql::Result object containing process list.
-  # === Return
-  # [Mysql::Result]
+  # @return [Mysql::Result] containing process list
   def list_processes
     check_connection
     @fields = @protocol.process_info_command
@@ -472,22 +438,16 @@ class Mysql
     store_result
   end
 
-  # Returns list of table name.
-  #
-  # NOTE for Ruby 1.8: This is not multi-byte safe. Don't use for
-  # multi-byte charset such as cp932.
-  # === Argument
-  # table :: [String] database name that may contain wild card.
-  # === Return
-  # [Array of String]
+  # @note for Ruby 1.8: This is not multi-byte safe. Don't use for multi-byte charset such as cp932.
+  # @param [String] table database name that may contain wild card.
+  # @return [Array<String>] list of table name.
   def list_tables(table=nil)
     q = table ? "show tables like '#{quote table}'" : "show tables"
     query(q).map(&:first)
   end
 
   # Check whether the  connection is available.
-  # === Return
-  # self
+  # @return [Mysql] self
   def ping
     check_connection
     @protocol.ping_command
@@ -495,10 +455,8 @@ class Mysql
   end
 
   # Flush tables or caches.
-  # === Argument
-  # op :: [Integer] operation. Use Mysql::REFRESH_* value.
-  # === Return
-  # self
+  # @param [Integer] op operation. Use Mysql::REFRESH_* value.
+  # @return [Mysql] self
   def refresh(op)
     check_connection
     @protocol.refresh_command op
@@ -506,56 +464,48 @@ class Mysql
   end
 
   # Reload grant tables.
-  # === Return
-  # self
+  # @return [Mysql] self
   def reload
     refresh Mysql::REFRESH_GRANT
   end
 
   # Select default database
-  # === Return
-  # self
+  # @return [Mysql] self
   def select_db(db)
     query "use #{db}"
     self
   end
 
   # shutdown server.
-  # === Return
-  # self
+  # @return [Mysql] self
   def shutdown(level=0)
     check_connection
     @protocol.shutdown_command level
     self
   end
 
-  # === Return
-  # [String] statistics message
+  # @return [String] statistics message
   def stat
     @protocol ? @protocol.statistics_command : 'MySQL server has gone away'
   end
 
   # Commit transaction
-  # === Return
-  # self
+  # @return [Mysql] self
   def commit
     query 'commit'
     self
   end
 
   # Rollback transaction
-  # === Return
-  # self
+  # @return [Mysql] self
   def rollback
     query 'rollback'
     self
   end
 
   # Set autocommit mode
-  # === Argument
-  # flag :: [true / false]
-  # === Return
-  # self
+  # @param [Boolean] flag
+  # @return [Mysql] self
   def autocommit(flag)
     query "set autocommit=#{flag ? 1 : 0}"
     self
@@ -567,24 +517,37 @@ class Mysql
     raise ClientError::ServerGoneError, 'The MySQL server has gone away' unless @protocol
   end
 
+  # @!visibility public
   # Field class
   class Field
-    attr_reader :db             # database name
-    attr_reader :table          # table name
-    attr_reader :org_table      # original table name
-    attr_reader :name           # field name
-    attr_reader :org_name       # original field name
-    attr_reader :charsetnr      # charset id number
-    attr_reader :length         # field length
-    attr_reader :type           # field type
-    attr_reader :flags          # flag
-    attr_reader :decimals       # number of decimals
-    attr_reader :default        # defualt value
+    # @return [String] database name
+    attr_reader :db
+    # @return [String] table name
+    attr_reader :table
+    # @return [String] original table name
+    attr_reader :org_table
+    # @return [String] field name
+    attr_reader :name
+    # @return [String] original field name
+    attr_reader :org_name
+    # @return [Integer] charset id number
+    attr_reader :charsetnr
+    # @return [Integer] field length
+    attr_reader :length
+    # @return [Integer] field type
+    attr_reader :type
+    # @return [Integer] flag
+    attr_reader :flags
+    # @return [Integer] number of decimals
+    attr_reader :decimals
+    # @return [String] defualt value
+    attr_reader :default
     alias :def :default
-    attr_accessor :result       # :nodoc:
 
-    # === Argument
-    # [Protocol::FieldPacket]
+    # @private
+    attr_accessor :result
+
+    # @attr [Protocol::FieldPacket] packet
     def initialize(packet)
       @db, @table, @org_table, @name, @org_name, @charsetnr, @length, @type, @flags, @decimals, @default =
         packet.db, packet.table, packet.org_table, packet.name, packet.org_name, packet.charsetnr, packet.length, packet.type, packet.flags, packet.decimals, packet.default
@@ -592,6 +555,7 @@ class Mysql
       @max_length = nil
     end
 
+    # @return [Hash] field information
     def hash
       {
         "name"       => @name,
@@ -605,26 +569,27 @@ class Mysql
       }
     end
 
+    # @private
     def inspect
       "#<Mysql::Field:#{@name}>"
     end
 
-    # Return true if numeric field.
+    # @return [Boolean] true if numeric field.
     def is_num?
       @flags & NUM_FLAG != 0
     end
 
-    # Return true if not null field.
+    # @return [Boolean] true if not null field.
     def is_not_null?
       @flags & NOT_NULL_FLAG != 0
     end
 
-    # Return true if primary key field.
+    # @return [Boolean] true if primary key field.
     def is_pri_key?
       @flags & PRI_KEY_FLAG != 0
     end
 
-    # maximum width of the field for the result set
+    # @return [Integer] maximum width of the field for the result set
     def max_length
       return @max_length if @max_length
       @max_length = 0
@@ -642,14 +607,15 @@ class Mysql
 
   end
 
+  # @!visibility public
   # Result set
   class ResultBase
     include Enumerable
 
+    # @return [Array<Mysql::Field>] field list
     attr_reader :fields
 
-    # === Argument
-    # fields :: [Array of Mysql::Field]
+    # @param [Array of Mysql::Field] fields
     def initialize(fields)
       @fields = fields
       @field_index = 0             # index of field
@@ -660,19 +626,17 @@ class Mysql
     end
 
     # ignore
+    # @return [void]
     def free
     end
 
-    # === Return
-    # [Integer] number of record
+    # @return [Integer] number of record
     def size
       @records.size
     end
     alias num_rows size
 
-    # Return current record.
-    # === Return
-    # [Array] record data
+    # @return [Array] current record data
     def fetch
       @fetched_record = nil
       return nil if @index >= @records.size
@@ -685,10 +649,8 @@ class Mysql
 
     # Return data of current record as Hash.
     # The hash key is field name.
-    # === Argument
-    # with_table :: if true, hash key is "table_name.field_name".
-    # === Return
-    # [Array of Hash] record data
+    # @param [Boolean] with_table if true, hash key is "table_name.field_name".
+    # @return [Hash] current record data
     def fetch_hash(with_table=nil)
       row = fetch
       return nil unless row
@@ -704,10 +666,8 @@ class Mysql
     end
 
     # Iterate block with record.
-    # === Block parameter
-    # [Array] record data
-    # === Return
-    # self. If block is not specified, this returns Enumerator.
+    # @yield [Array] record data
+    # @return [self] self. If block is not specified, this returns Enumerator.
     def each(&block)
       return enum_for(:each) unless block
       while rec = fetch
@@ -717,12 +677,9 @@ class Mysql
     end
 
     # Iterate block with record as Hash.
-    # === Argument
-    # with_table :: if true, hash key is "table_name.field_name".
-    # === Block parameter
-    # [Array of Hash] record data
-    # === Return
-    # self. If block is not specified, this returns Enumerator.
+    # @param [Boolean] with_table if true, hash key is "table_name.field_name".
+    # @yield [Hash] record data
+    # @return [self] self. If block is not specified, this returns Enumerator.
     def each_hash(with_table=nil, &block)
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
@@ -732,27 +689,21 @@ class Mysql
     end
 
     # Set record position
-    # === Argument
-    # n :: [Integer] record index
-    # === Return
-    # self
+    # @param [Integer] n record index
+    # @return [self] self
     def data_seek(n)
       @index = n
       self
     end
 
-    # Return current record position
-    # === Return
-    # [Integer] record position
+    # @return [Integer] current record position
     def row_tell
       @index
     end
 
     # Set current position of record
-    # === Argument
-    # n :: [Integer] record index
-    # === Return
-    # [Integer] previous position
+    # @param [Integer] n record index
+    # @return [Integer] previous position
     def row_seek(n)
       ret = @index
       @index = n
@@ -760,8 +711,12 @@ class Mysql
     end
   end
 
+  # @!visibility public
   # Result set for simple query
   class Result < ResultBase
+    # @private
+    # @param [Array<Mysql::Field>] fields
+    # @param [Mysql::Protocol] protocol
     def initialize(fields, protocol=nil)
       super fields
       return unless protocol
@@ -769,6 +724,7 @@ class Mysql
       fields.each{|f| f.result = self}  # for calculating max_field
     end
 
+    # @private
     # calculate max_length of all fields
     def calculate_field_max_length
       max_length = Array.new(@fields.size, 0)
@@ -783,9 +739,7 @@ class Mysql
       end
     end
 
-    # Return current field
-    # === Return
-    # [Mysql::Field] field object
+    # @return [Mysql::Field] current field
     def fetch_field
       return nil if @field_index >= @fields.length
       ret = @fields[@field_index]
@@ -793,77 +747,90 @@ class Mysql
       ret
     end
 
-    # Return current position of field
-    # === Return
-    # [Integer] field position
+    # @return [Integer] current field position
     def field_tell
       @field_index
     end
 
     # Set field position
-    # === Argument
-    # n :: [Integer] field index
-    # === Return
-    # [Integer] previous position
+    # @param [Integer] n field index
+    # @return [Integer] previous position
     def field_seek(n)
       ret = @field_index
       @field_index = n
       ret
     end
 
-    # Return field
-    # === Argument
-    # n :: [Integer] field index
-    # === Return
-    # [Mysql::Field] field
+    # Return specified field
+    # @param [Integer] n field index
+    # @return [Mysql::Field] field
     def fetch_field_direct(n)
       raise ClientError, "invalid argument: #{n}" if n < 0 or n >= @fields.length
       @fields[n]
     end
 
-    # Return all fields
-    # === Return
-    # [Array of Mysql::Field] all fields
+    # @return [Array<Mysql::Field>] all fields
     def fetch_fields
       @fields
     end
 
-    # Return length of each fields
-    # === Return
-    # [Array of Integer] length of each fields
+    # @return [Array<Integer>] length of each fields
     def fetch_lengths
       return nil unless @fetched_record
       @fetched_record.map{|c|c.nil? ? 0 : c.length}
     end
 
-    # === Return
-    # [Integer] number of fields
+    # @return [Integer] number of fields
     def num_fields
       @fields.size
     end
   end
 
+  # @!visibility private
   # Result set for prepared statement
   class StatementResult < ResultBase
+    # @private
+    # @param [Array<Mysql::Field>] fields
+    # @param [Mysql::Protocol] protocol
+    # @param [Mysql::Charset] charset
     def initialize(fields, protocol, charset)
       super fields
       @records = protocol.stmt_retr_all_records @fields, charset
     end
   end
 
+  # @!visibility public
   # Prepared statement
+  # @!attribute [r] affected_rows
+  #   @return [Integer]
+  # @!attribute [r] insert_id
+  #   @return [Integer]
+  # @!attribute [r] server_status
+  #   @return [Integer]
+  # @!attribute [r] warning_count
+  #   @return [Integer]
+  # @!attribute [r] param_count
+  #   @return [Integer]
+  # @!attribute [r] fields
+  #   @return [Array<Mysql::Field>]
+  # @!attribute [r] sqlstate
+  #   @return [String]
   class Stmt
     include Enumerable
 
     attr_reader :affected_rows, :insert_id, :server_status, :warning_count
     attr_reader :param_count, :fields, :sqlstate
 
+    # @private
     def self.finalizer(protocol, statement_id)
       proc do
         protocol.gc_stmt statement_id
       end
     end
 
+    # @private
+    # @param [Mysql::Protocol] protocol
+    # @param [Mysql::Charset] charset
     def initialize(protocol, charset)
       @protocol = protocol
       @charset = charset
@@ -874,11 +841,10 @@ class Mysql
       @bind_result = nil
     end
 
-    # parse prepared-statement and return Mysql::Statement object
-    # === Argument
-    # str :: [String] query string
-    # === Return
-    # self
+    # @private
+    # parse prepared-statement and return {Mysql::Stmt} object
+    # @param [String] str query string
+    # @return self
     def prepare(str)
       close
       begin
@@ -894,10 +860,8 @@ class Mysql
     end
 
     # Execute prepared statement.
-    # === Argument
-    # values passed to query
-    # === Return
-    # self
+    # @param [Object] values values passed to query
+    # @return [Mysql::Stmt] self
     def execute(*values)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count
@@ -921,15 +885,14 @@ class Mysql
     end
 
     # Close prepared statement
+    # @return [void]
     def close
       ObjectSpace.undefine_finalizer(self)
       @protocol.stmt_close_command @statement_id if @statement_id
       @statement_id = nil
     end
 
-    # Return current record
-    # === Return
-    # [Array] record data
+    # @return [Array] current record data
     def fetch
       row = @result.fetch
       return row unless @bind_result
@@ -975,19 +938,15 @@ class Mysql
 
     # Return data of current record as Hash.
     # The hash key is field name.
-    # === Argument
-    # with_table :: if true, hash key is "table_name.field_name".
-    # === Return
-    # [Array of Hash] record data
+    # @param [Boolean] with_table if true, hash key is "table_name.field_name".
+    # @return [Hash] record data
     def fetch_hash(with_table=nil)
       @result.fetch_hash with_table
     end
 
     # Set retrieve type of value
-    # === Argument
-    # [Numeric / Fixnum / Integer / Float / String / Mysql::Time / nil] value type
-    # === Return
-    # self
+    # @param [Numeric / Fixnum / Integer / Float / String / Mysql::Time / nil] args value type
+    # @return [Mysql::Stmt] self
     def bind_result(*args)
       if @fields.length != args.length
         raise ClientError, "bind_result: result value count(#{@fields.length}) != number of argument(#{args.length})"
@@ -1000,10 +959,9 @@ class Mysql
     end
 
     # Iterate block with record.
-    # === Block parameter
-    # [Array] record data
-    # === Return
-    # self. If block is not specified, this returns Enumerator.
+    # @yield [Array] record data
+    # @return [Mysql::Stmt] self
+    # @return [Enumerator] If block is not specified
     def each(&block)
       return enum_for(:each) unless block
       while rec = fetch
@@ -1013,12 +971,10 @@ class Mysql
     end
 
     # Iterate block with record as Hash.
-    # === Argument
-    # with_table :: if true, hash key is "table_name.field_name".
-    # === Block parameter
-    # [Array of Hash] record data
-    # === Return
-    # self. If block is not specified, this returns Enumerator.
+    # @param [Boolean] with_table if true, hash key is "table_name.field_name".
+    # @yield [Hash] record data
+    # @return [Mysql::Stmt] self
+    # @return [Enumerator] If block is not specified
     def each_hash(with_table=nil, &block)
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
@@ -1027,67 +983,76 @@ class Mysql
       self
     end
 
-    # === Return
-    # [Integer] number of record
+    # @return [Integer] number of record
     def size
       @result.size
     end
     alias num_rows size
 
     # Set record position
-    # === Argument
-    # n :: [Integer] record index
-    # === Return
-    # self
+    # @param [Integer] n record index
+    # @return [void]
     def data_seek(n)
       @result.data_seek(n)
     end
 
-    # Return current record position
-    # === Return
-    # [Integer] record position
+    # @return [Integer] current record position
     def row_tell
       @result.row_tell
     end
 
     # Set current position of record
-    # === Argument
-    # n :: [Integer] record index
-    # === Return
-    # [Integer] previous position
+    # @param [Integer] n record index
+    # @return [Integer] previous position
     def row_seek(n)
       @result.row_seek(n)
     end
 
-    # === Return
-    # [Integer] number of columns for last query
+    # @return [Integer] number of columns for last query
     def field_count
       @fields.length
     end
 
     # ignore
+    # @return [void]
     def free_result
     end
 
     # Returns Mysql::Result object that is empty.
     # Use fetch_fields to get list of fields.
-    # === Return
-    # [Mysql::Result]
+    # @return [Mysql::Result]
     def result_metadata
       return nil if @fields.empty?
       Result.new @fields
     end
   end
 
+  # @!visibility public
+  # @!attribute [rw] year
+  #   @return [Integer]
+  # @!attribute [rw] month
+  #   @return [Integer]
+  # @!attribute [rw] day
+  #   @return [Integer]
+  # @!attribute [rw] hour
+  #   @return [Integer]
+  # @!attribute [rw] minute
+  #   @return [Integer]
+  # @!attribute [rw] second
+  #   @return [Integer]
+  # @!attribute [rw] neg
+  #   @return [Boolean] negative flag
+  # @!attribute [rw] second_part
+  #   @return [Integer]
   class Time
-    # === Argument
-    # year        :: [Integer] year
-    # month       :: [Integer] month
-    # day         :: [Integer] day
-    # hour        :: [Integer] hour
-    # minute      :: [Integer] minute
-    # second      :: [Integer] second
-    # neg         :: [true / false] negative flag
+    # @param [Integer] year
+    # @param [Integer] month
+    # @param [Integer] day
+    # @param [Integer] hour
+    # @param [Integer] minute
+    # @param [Integer] second
+    # @param [Boolean] neg negative flag
+    # @param [Integer] second_part
     def initialize(year=0, month=0, day=0, hour=0, minute=0, second=0, neg=false, second_part=0)
       @year, @month, @day, @hour, @minute, @second, @neg, @second_part =
         year.to_i, month.to_i, day.to_i, hour.to_i, minute.to_i, second.to_i, neg, second_part.to_i
@@ -1097,19 +1062,20 @@ class Mysql
     alias min minute
     alias sec second
 
-    def ==(other) # :nodoc:
+    # @private
+    def ==(other)
       other.is_a?(Mysql::Time) &&
         @year == other.year && @month == other.month && @day == other.day &&
         @hour == other.hour && @minute == other.minute && @second == other.second &&
         @neg == neg && @second_part == other.second_part
     end
 
-    def eql?(other) # :nodoc:
+    # @private
+    def eql?(other)
       self == other
     end
 
-    # === Return
-    # [String] "yyyy-mm-dd HH:MM:SS"
+    # @return [String] "yyyy-mm-dd HH:MM:SS"
     def to_s
       if year == 0 and mon == 0 and day == 0
         h = neg ? hour * -1 : hour
@@ -1119,13 +1085,13 @@ class Mysql
       end
     end
 
-    # === Return
-    # [Integer] yyyymmddHHMMSS
+    # @return [Integer] yyyymmddHHMMSS
     def to_i
       sprintf("%04d%02d%02d%02d%02d%02d", year, mon, day, hour, min, sec).to_i
     end
 
-    def inspect # :nodoc:
+    # @private
+    def inspect
       sprintf "#<#{self.class.name}:%04d-%02d-%02d %02d:%02d:%02d>", year, mon, day, hour, min, sec
     end
 

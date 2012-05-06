@@ -1,16 +1,31 @@
-# Copyright (C) 2008-2010 TOMITA Masahiro
+# Copyright (C) 2008-2012 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
+#
 class Mysql
+  # @!attribute [r] number
+  #   @private
+  # @!attribute [r] name
+  #   @return [String] charset name
+  # @!attribute [r] csname
+  #   @return [String] collation name
   class Charset
+    # @private
+    # @param [Integer] number
+    # @param [String] name
+    # @param [String] csname
     def initialize(number, name, csname)
       @number, @name, @csname = number, name, csname
       @unsafe = false
     end
+
     attr_reader :number, :name, :csname
+
+    # @private
     attr_accessor :unsafe
 
     # [[charset_number, charset_name, collation_name, default], ...]
+    # @private
     CHARSETS = [
       [  1, "big5",     "big5_chinese_ci",       true ],
       [  2, "latin2",   "latin2_czech_cs",       false],
@@ -164,12 +179,16 @@ class Mysql
       [254, "utf8",     "utf8_general_cs",       false],
     ]
 
+    # @private
     UNSAFE_CHARSET = [
       "big5", "sjis", "filename", "gbk", "ucs2", "cp932",
     ]
 
+    # @private
     NUMBER_TO_CHARSET = {}
+    # @private
     COLLATION_TO_CHARSET = {}
+    # @private
     CHARSET_DEFAULT = {}
     CHARSETS.each do |number, csname, clname, default|
       cs = Charset.new number, csname, clname
@@ -179,13 +198,20 @@ class Mysql
       CHARSET_DEFAULT[csname] = cs if default
     end
 
+    # @private
     BINARY_CHARSET_NUMBER = CHARSET_DEFAULT['binary'].number
 
+    # @private
+    # @param [Integer] n
+    # @return [Mysql::Charset]
     def self.by_number(n)
       raise ClientError, "unknown charset number: #{n}" unless NUMBER_TO_CHARSET.key? n
       NUMBER_TO_CHARSET[n]
     end
 
+    # @private
+    # @param [String] str
+    # @return [Mysql::Charset]
     def self.by_name(str)
       ret = COLLATION_TO_CHARSET[str] || CHARSET_DEFAULT[str]
       raise ClientError, "unknown charset: #{str}" unless ret
@@ -194,6 +220,7 @@ class Mysql
 
     if defined? Encoding
 
+      # @private
       # MySQL Charset -> Ruby's Encodeing
       CHARSET_ENCODING = {
         "armscii8" => nil,
@@ -235,30 +262,35 @@ class Mysql
         "utf8mb4"  => Encoding::UTF_8,
       }
 
+      # @private
+      # @param [String] value
+      # @return [String]
       def self.to_binary(value)
         value.force_encoding Encoding::ASCII_8BIT
       end
 
+      # @private
       # convert raw to encoding and convert to Encoding.default_internal
-      # === Argument
-      # raw :: [String]
-      # charset :: [Mysql::Charset]
-      # === Return
-      # result [String]
+      # @param [String] raw
+      # @param [Encoding] encoding
+      # @return [String] result
       def self.convert_encoding(raw, encoding)
         raw.force_encoding(encoding).encode
       end
 
+      # @private
       # retrun corresponding Ruby encoding
-      # === Return
-      # encoding [Encoding]
+      # @return [Encoding] encoding
       def encoding
         enc = CHARSET_ENCODING[@name.downcase]
         raise Mysql::ClientError, "unsupported charset: #{@name}" unless enc
         enc
       end
 
+      # @private
       # convert encoding to corrensponding to MySQL charset
+      # @param [String] value
+      # @return [String]
       def convert(value)
         if value.is_a? String and value.encoding != Encoding::ASCII_8BIT
           value = value.encode encoding
