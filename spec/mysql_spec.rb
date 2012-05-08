@@ -13,7 +13,7 @@ MYSQL_SOCKET   = ENV['MYSQL_SOCKET']
 
 describe 'Mysql::VERSION' do
   it 'returns client version' do
-    Mysql::VERSION.should == 20907
+    Mysql::VERSION.should == 20908
   end
 end
 
