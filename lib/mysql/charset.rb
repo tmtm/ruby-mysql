@@ -71,6 +71,8 @@ class Mysql
       [ 42, "latin7",   "latin7_general_cs",     false],
       [ 43, "macce",    "macce_bin",             false],
       [ 44, "cp1250",   "cp1250_croatian_ci",    false],
+      [ 45, "utf8mb4",  "utf8mb4_general_ci",    true ],
+      [ 46, "utf8mb4",  "utf8mb4_bin",           false],
       [ 47, "latin1",   "latin1_bin",            false],
       [ 48, "latin1",   "latin1_general_ci",     false],
       [ 49, "latin1",   "latin1_general_cs",     false],
