@@ -48,8 +48,8 @@ class Mysql
         return t
       when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
         len = pkt.utiny
-        y, m, d, h, mi, s, bs = pkt.read(len).unpack("vCCCCCV")
-        return Mysql::Time.new(y, m, d, h, mi, s, bs)
+        y, m, d, h, mi, s, sp = pkt.read(len).unpack("vCCCCCV")
+        return Mysql::Time.new(y, m, d, h, mi, s, false, sp)
       when Field::TYPE_TIME
         len = pkt.utiny
         sign, d, h, mi, s, sp = pkt.read(len).unpack("CVCCCV")

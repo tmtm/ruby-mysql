@@ -330,7 +330,7 @@ static VALUE net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
         mi = buf[5];
         s = buf[6];
         bs = buf[7] | buf[8]<<8 | buf[9]<<16 | buf[10]<<24;
-        return rb_funcall(cMysqlTime, rb_intern("new"), 7, ULONG2NUM(y), ULONG2NUM(m), ULONG2NUM(d), ULONG2NUM(h), ULONG2NUM(mi), ULONG2NUM(s), ULONG2NUM(bs));
+        return rb_funcall(cMysqlTime, rb_intern("new"), 8, ULONG2NUM(y), ULONG2NUM(m), ULONG2NUM(d), ULONG2NUM(h), ULONG2NUM(mi), ULONG2NUM(s), Qfalse, ULONG2NUM(bs));
     case TYPE_TIME:
         len = *data->ptr++;
         memset(buf, 0, sizeof(buf));
