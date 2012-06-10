@@ -44,10 +44,7 @@ class Mysql
       when Field::TYPE_DATE
         len = pkt.utiny
         y, m, d = pkt.read(len).unpack("vCC")
-        t = Mysql::Time.new(y, m, d)
-        def t.to_s
-          sprintf "%04d-%02d-%02d", year, mon ,day
-        end
+        t = Mysql::Time.new(y, m, d, nil, nil, nil)
         return t
       when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
         len = pkt.utiny

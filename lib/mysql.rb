@@ -1054,6 +1054,7 @@ class Mysql
     # @param [Boolean] neg negative flag
     # @param [Integer] second_part
     def initialize(year=0, month=0, day=0, hour=0, minute=0, second=0, neg=false, second_part=0)
+      @date_flag = !(hour && minute && second)
       @year, @month, @day, @hour, @minute, @second, @neg, @second_part =
         year.to_i, month.to_i, day.to_i, hour.to_i, minute.to_i, second.to_i, neg, second_part.to_i
     end
@@ -1077,7 +1078,9 @@ class Mysql
 
     # @return [String] "yyyy-mm-dd HH:MM:SS"
     def to_s
-      if year == 0 and mon == 0 and day == 0
+      if @date_flag
+        sprintf "%04d-%02d-%02d", year, mon, day
+      elsif year == 0 and mon == 0 and day == 0
         h = neg ? hour * -1 : hour
         sprintf "%02d:%02d:%02d", h, min, sec
       else
