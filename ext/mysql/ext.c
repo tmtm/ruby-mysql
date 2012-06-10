@@ -255,7 +255,7 @@ enum {
 
 static VALUE cMysqlTime;
 
-static VALUE net2value(VALUE obj, VALUE pkt, VALUE type, VALUE unsigned_flag)
+static VALUE net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
 {
     data_t *data;
     unsigned long n;
@@ -351,6 +351,105 @@ static VALUE net2value(VALUE obj, VALUE pkt, VALUE type, VALUE unsigned_flag)
     }
 }
 
+static VALUE eProtocolError;
+
+static VALUE value2net(VALUE klass, VALUE obj)
+{
+    int type;
+    VALUE val;
+    if (obj == Qnil) {
+        type = TYPE_NULL;
+        val = rb_str_new("", 0);
+    } else if (FIXNUM_P(obj)) {
+        long n;
+        int flag = 0;
+        char buf[sizeof(long)], buf2[sizeof(long)];
+
+        n = FIX2LONG(obj);
+        if (n >= 0) {
+            flag = 0x8000;
+        }
+        memcpy(buf, (char *)&n, sizeof(n));
+#ifdef WORDS_BIGENDIAN
+        for (i=0; i<sizeof(n); i++) {
+            buf2[i] = buf[sizeof(n)-i];
+        }
+        memcpy(buf, buf2, sizeof(buf));
+#endif
+        if (-0x80 <= n && n < 0x100) {
+            type = TYPE_TINY | flag;
+            val = rb_str_new(buf, 1);
+        } else if (-0x8000 <= n && n < 0x10000) {
+            type = TYPE_SHORT | flag;
+            val = rb_str_new(buf, 2);
+#if SIZEOF_LONG == 4
+        } else {
+            type = TYPE_LONG | flag;
+            val = rb_str_new(buf, 4);
+#else
+        } else if (-0x80000000 <= n && n < 0x100000000) {
+            type = TYPE_LONG | flag;
+            val = rb_str_new(buf, 4);
+        } else {
+            type = TYPE_LONGLONG | flag;
+            val = rb_str_new(buf, 8);
+#endif
+        }
+    } else if (TYPE(obj) == T_BIGNUM) {
+        char buf[sizeof(long long)], buf2[sizeof(long long)];
+        if (RBIGNUM_SIGN(obj)) {
+            unsigned long long ull;
+            ull = NUM2ULL(obj);
+            memcpy(buf, (char *)&ull, sizeof(ull));
+            type = TYPE_LONGLONG | 0x8000;
+        } else {
+            long long ll;
+            ll = NUM2LL(obj);
+            memcpy(buf, (char *)&ll, sizeof(ll));
+            type = TYPE_LONGLONG;
+        }
+#ifdef WORDS_BIGENDIAN
+        for (i=0; i<sizeof(buf); i++) {
+            buf2[i] = buf[sizeof(buf)-i];
+        }
+        memcpy(buf, buf2, sizeof(buf));
+#endif
+        val = rb_str_new(buf, sizeof(buf));
+    } else if (rb_obj_is_kind_of(obj, rb_cFloat)) {
+        double dbl;
+
+        dbl = NUM2DBL(obj);
+        type = TYPE_DOUBLE;
+        val = rb_str_new((char *)&dbl, sizeof(dbl));
+    } else if (rb_obj_is_kind_of(obj, rb_cString)) {
+        type = TYPE_STRING;
+        val = s_lcs(0, obj);
+    } else if (rb_obj_is_kind_of(obj, cMysqlTime) || rb_obj_is_kind_of(obj, rb_cTime)) {
+        int year, month, day, hour, min, sec;
+        char buf[8];
+
+        year = FIX2INT(rb_funcall(obj, rb_intern("year"), 0));
+        month = FIX2INT(rb_funcall(obj, rb_intern("month"), 0));
+        day = FIX2INT(rb_funcall(obj, rb_intern("day"), 0));
+        hour = FIX2INT(rb_funcall(obj, rb_intern("hour"), 0));
+        min = FIX2INT(rb_funcall(obj, rb_intern("min"), 0));
+        sec = FIX2INT(rb_funcall(obj, rb_intern("sec"), 0));
+        type = TYPE_DATETIME;
+        buf[0] = 7;
+        buf[1] = year & 0xff;
+        buf[2] = (year >> 8) & 0xff;
+        buf[3] = month;
+        buf[4] = day;
+        buf[5] = hour;
+        buf[6] = min;
+        buf[7] = sec;
+        val = rb_str_new(buf, 8);
+    } else {
+        rb_raise(eProtocolError, "class %s is not supported", rb_class2name(rb_obj_class(obj)));
+    }
+    return rb_ary_new3(2, INT2FIX(type), val);
+}
+
 void Init_ext(void)
 {
     VALUE cMysql;
@@ -375,5 +474,7 @@ void Init_ext(void)
 
     cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
     cProtocol = rb_define_class_under(cMysql, "Protocol", rb_cObject);
+    eProtocolError = rb_const_get(cMysql, rb_intern("ProtocolError"));
     rb_define_singleton_method(cProtocol, "net2value", net2value, 3);
+    rb_define_singleton_method(cProtocol, "value2net", value2net, 1);
 }

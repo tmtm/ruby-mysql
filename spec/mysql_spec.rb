@@ -1067,6 +1067,99 @@ describe 'Mysql::Stmt' do
     end
   end
 
+  describe '#execute with various integer value:' do
+    before do
+      @m.query('create temporary table t (i bigint)')
+    end
+    [
+      -9223372036854775808,
+      -9223372036854775807,
+      -4294967297,
+      -4294967296,
+      -4294967295,
+      -2147483649,
+      -2147483648,
+      -2147483647,
+      -65537,
+      -65536,
+      -65535,
+      -32769,
+      -32768,
+      -32767,
+      -257,
+      -256,
+      -255,
+      -129,
+      -128,
+      -127,
+      0,
+      126,
+      127,
+      128,
+      254,
+      255,
+      256,
+      32766,
+      32767,
+      32768,
+      65534,
+      65535,
+      65536,
+      2147483646,
+      2147483647,
+      2147483648,
+      4294967294,
+      4294967295,
+      4294967296,
+      9223372036854775806,
+      9223372036854775807,
+    ].each do |n|
+      it "#{n} is #{n}" do
+        @s.prepare 'insert into t values (?)'
+        @s.execute n
+        @m.query('select i from t').fetch.should == ["#{n}"]
+      end
+    end
+  end
+
+  describe '#execute with various unsigned integer value:' do
+    before do
+      @m.query('create temporary table t (i bigint unsigned)')
+    end
+    [
+      0,
+      126,
+      127,
+      128,
+      254,
+      255,
+      256,
+      32766,
+      32767,
+      32768,
+      65534,
+      65535,
+      65536,
+      2147483646,
+      2147483647,
+      2147483648,
+      4294967294,
+      4294967295,
+      4294967296,
+      9223372036854775806,
+      9223372036854775807,
+      9223372036854775808,
+      18446744073709551614,
+      18446744073709551615,
+    ].each do |n|
+      it "#{n} is #{n}" do
+        @s.prepare 'insert into t values (?)'
+        @s.execute n
+        @m.query('select i from t').fetch.should == ["#{n}"]
+      end
+    end
+  end
+
   it '#fetch returns result-record' do
     @s.prepare 'select 123, "abc", null'
     @s.execute
