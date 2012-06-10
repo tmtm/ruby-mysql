@@ -14,10 +14,10 @@ class Mysql
   require "mysql/error"
   require "mysql/charset"
   require "mysql/protocol"
+  require "mysql/packet.rb"
   begin
     require "mysql/packet.so"
   rescue LoadError
-    require "mysql/packet.rb"
   end
 
   VERSION            = 20908               # Version number of this library
