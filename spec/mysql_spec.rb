@@ -649,6 +649,7 @@ end
 describe 'Mysql::Result' do
   before do
     @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    @m.charset = 'latin1'
     @m.query 'create temporary table t (id int, str char(10), primary key (id))'
     @m.query "insert into t values (1,'abc'),(2,'defg'),(3,'hi'),(4,null)"
     @res = @m.query 'select * from t'
@@ -808,6 +809,7 @@ end
 describe 'Mysql::Field' do
   before do
     @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    @m.charset = 'latin1'
     @m.query 'create temporary table t (id int default 0, str char(10), primary key (id))'
     @m.query "insert into t values (1,'abc'),(2,'defg'),(3,'hi'),(4,null)"
     @res = @m.query 'select * from t'
