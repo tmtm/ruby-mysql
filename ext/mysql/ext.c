@@ -351,7 +351,7 @@ static VALUE net2value(VALUE obj, VALUE pkt, VALUE type, VALUE unsigned_flag)
     }
 }
 
-void Init_packet(void)
+void Init_ext(void)
 {
     VALUE cMysql;
     VALUE cPacket;

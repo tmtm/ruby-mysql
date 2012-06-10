@@ -16,7 +16,7 @@ class Mysql
   require "mysql/protocol"
   require "mysql/packet.rb"
   begin
-    require "mysql/packet.so"
+    require "mysql/ext.so"
   rescue LoadError
   end
 

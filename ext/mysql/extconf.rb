@@ -1,3 +1,3 @@
 require 'mkmf'
 
-create_makefile 'mysql/packet'
+create_makefile 'mysql/ext'
