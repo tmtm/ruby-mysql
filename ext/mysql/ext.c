@@ -3,9 +3,9 @@
 typedef struct {
     unsigned char *ptr;
     unsigned char *endp;
-} data_t;
+} packet_data_t;
 
-static VALUE s_lcb(VALUE klass, VALUE val)
+static VALUE packet_s_lcb(VALUE klass, VALUE val)
 {
     unsigned long long n;
     unsigned char buf[9];
@@ -49,15 +49,15 @@ static VALUE s_lcb(VALUE klass, VALUE val)
     return rb_str_new(buf, 9);
 }
 
-static VALUE s_lcs(VALUE klass, VALUE val)
+static VALUE packet_s_lcs(VALUE klass, VALUE val)
 {
-    VALUE ret = s_lcb(klass, ULONG2NUM(RSTRING_LEN(val)));
+    VALUE ret = packet_s_lcb(klass, ULONG2NUM(RSTRING_LEN(val)));
     return rb_str_cat(ret, RSTRING_PTR(val), RSTRING_LEN(val));
 }
 
-static VALUE allocate(VALUE klass)
+static VALUE packet_allocate(VALUE klass)
 {
-    data_t *data;
+    packet_data_t *data;
 
     data = xmalloc(sizeof *data);
     data->ptr = NULL;
@@ -65,11 +65,11 @@ static VALUE allocate(VALUE klass)
     return Data_Wrap_Struct(klass, 0, xfree, data);
 }
 
-static VALUE initialize(VALUE obj, VALUE buf)
+static VALUE packet_initialize(VALUE obj, VALUE buf)
 {
-    data_t *data;
+    packet_data_t *data;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     rb_ivar_set(obj, rb_intern("buf"), buf);
     data->ptr = RSTRING_PTR(buf);
     data->endp = data->ptr + RSTRING_LEN(buf);
@@ -77,7 +77,7 @@ static VALUE initialize(VALUE obj, VALUE buf)
 
 #define NIL_VALUE 0xFFFFFFFFFFFFFFFF
 
-static unsigned long long _lcb(data_t *data)
+static unsigned long long _packet_lcb(packet_data_t *data)
 {
     unsigned char v;
     unsigned long long n;
@@ -113,27 +113,27 @@ static unsigned long long _lcb(data_t *data)
     }
 }
 
-static VALUE lcb(VALUE obj)
+static VALUE packet_lcb(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned char v;
     unsigned long long n;
 
-    Data_Get_Struct(obj, data_t, data);
-    n = _lcb(data);
+    Data_Get_Struct(obj, packet_data_t, data);
+    n = _packet_lcb(data);
     if (n == NIL_VALUE)
         return Qnil;
     return ULL2NUM(n);
 }
 
-static VALUE lcs(VALUE obj)
+static VALUE packet_lcs(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned long long l;
     VALUE ret;
 
-    Data_Get_Struct(obj, data_t, data);
-    l = _lcb(data);
+    Data_Get_Struct(obj, packet_data_t, data);
+    l = _packet_lcb(data);
     if (l == NIL_VALUE)
         return Qnil;
     if (data->ptr+l > data->endp)
@@ -143,13 +143,13 @@ static VALUE lcs(VALUE obj)
     return ret;
 }
 
-static VALUE read(VALUE obj, VALUE len)
+static VALUE packet_read(VALUE obj, VALUE len)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned long long  l = NUM2ULL(len);
     VALUE ret;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     if (data->ptr+l > data->endp)
         l = data->endp - data->ptr;
     ret = rb_str_new(data->ptr, l);
@@ -157,13 +157,13 @@ static VALUE read(VALUE obj, VALUE len)
     return ret;
 }
 
-static VALUE string(VALUE obj)
+static VALUE packet_string(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned char *p;
     VALUE ret;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     p = data->ptr;
     while (p < data->endp && *p++ != '\0')
         ;
@@ -172,31 +172,31 @@ static VALUE string(VALUE obj)
     return ret;
 }
 
-static VALUE utiny(VALUE obj)
+static VALUE packet_utiny(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     return UINT2NUM(*data->ptr++);
 }
 
-static VALUE _ushort(VALUE obj)
+static VALUE packet_ushort(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned short n;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     n = *data->ptr++;
     n |= *data->ptr++ * 0x100;
     return UINT2NUM(n);
 }
 
-static VALUE _ulong(VALUE obj)
+static VALUE packet_ulong(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned long n;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     n = *data->ptr++;
     n |= *data->ptr++ * 0x100;
     n |= *data->ptr++ * 0x10000;
@@ -204,22 +204,22 @@ static VALUE _ulong(VALUE obj)
     return UINT2NUM(n);
 }
 
-static VALUE eofQ(VALUE obj)
+static VALUE packet_eofQ(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     if (*data->ptr == 0xfe && data->endp - data->ptr == 5)
         return Qtrue;
     else
         return Qfalse;
 }
 
-static VALUE to_s(VALUE obj)
+static VALUE packet_to_s(VALUE obj)
 {
-    data_t *data;
+    packet_data_t *data;
 
-    Data_Get_Struct(obj, data_t, data);
+    Data_Get_Struct(obj, packet_data_t, data);
     return rb_str_new(data->ptr, data->endp-data->ptr);
 }
 
@@ -255,9 +255,9 @@ enum {
 
 static VALUE cMysqlTime;
 
-static VALUE net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
+static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
 {
-    data_t *data;
+    packet_data_t *data;
     unsigned long n;
     unsigned long long ll;
     float f;
@@ -267,7 +267,7 @@ static VALUE net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
     unsigned long y, m, d, h, mi, s, bs;
     unsigned char buf[12];
 
-    Data_Get_Struct(pkt, data_t, data);
+    Data_Get_Struct(pkt, packet_data_t, data);
     switch (FIX2INT(type)) {
     case TYPE_STRING:
     case TYPE_VAR_STRING:
@@ -353,7 +353,7 @@ static VALUE net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
 
 static VALUE eProtocolError;
 
-static VALUE value2net(VALUE klass, VALUE obj)
+static VALUE protocol_value2net(VALUE klass, VALUE obj)
 {
     int type;
     VALUE val;
@@ -423,7 +423,7 @@ static VALUE value2net(VALUE klass, VALUE obj)
         val = rb_str_new((char *)&dbl, sizeof(dbl));
     } else if (rb_obj_is_kind_of(obj, rb_cString)) {
         type = TYPE_STRING;
-        val = s_lcs(0, obj);
+        val = packet_s_lcs(0, obj);
     } else if (rb_obj_is_kind_of(obj, cMysqlTime) || rb_obj_is_kind_of(obj, rb_cTime)) {
         int year, month, day, hour, min, sec;
         char buf[8];
@@ -458,23 +458,23 @@ void Init_ext(void)
 
     cMysql = rb_define_class("Mysql", rb_cObject);
     cPacket = rb_define_class_under(cMysql, "Packet", rb_cObject);
-    rb_define_alloc_func(cPacket, allocate);
-    rb_define_singleton_method(cPacket, "lcb", s_lcb, 1);
-    rb_define_singleton_method(cPacket, "lcs", s_lcs, 1);
-    rb_define_method(cPacket, "initialize", initialize, 1);
-    rb_define_method(cPacket, "lcb", lcb, 0);
-    rb_define_method(cPacket, "lcs", lcs, 0);
-    rb_define_method(cPacket, "read", read, 1);
-    rb_define_method(cPacket, "string", string, 0);
-    rb_define_method(cPacket, "utiny", utiny, 0);
-    rb_define_method(cPacket, "ushort", _ushort, 0);
-    rb_define_method(cPacket, "ulong", _ulong, 0);
-    rb_define_method(cPacket, "eof?", eofQ, 0);
-    rb_define_method(cPacket, "to_s", to_s, 0);
+    rb_define_alloc_func(cPacket, packet_allocate);
+    rb_define_singleton_method(cPacket, "lcb", packet_s_lcb, 1);
+    rb_define_singleton_method(cPacket, "lcs", packet_s_lcs, 1);
+    rb_define_method(cPacket, "initialize", packet_initialize, 1);
+    rb_define_method(cPacket, "lcb", packet_lcb, 0);
+    rb_define_method(cPacket, "lcs", packet_lcs, 0);
+    rb_define_method(cPacket, "read", packet_read, 1);
+    rb_define_method(cPacket, "string", packet_string, 0);
+    rb_define_method(cPacket, "utiny", packet_utiny, 0);
+    rb_define_method(cPacket, "ushort", packet_ushort, 0);
+    rb_define_method(cPacket, "ulong", packet_ulong, 0);
+    rb_define_method(cPacket, "eof?", packet_eofQ, 0);
+    rb_define_method(cPacket, "to_s", packet_to_s, 0);
 
     cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
     cProtocol = rb_define_class_under(cMysql, "Protocol", rb_cObject);
     eProtocolError = rb_const_get(cMysql, rb_intern("ProtocolError"));
-    rb_define_singleton_method(cProtocol, "net2value", net2value, 3);
-    rb_define_singleton_method(cProtocol, "value2net", value2net, 1);
+    rb_define_singleton_method(cProtocol, "net2value", protocol_net2value, 3);
+    rb_define_singleton_method(cProtocol, "value2net", protocol_value2net, 1);
 }
