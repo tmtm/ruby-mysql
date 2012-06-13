@@ -9,6 +9,7 @@ static VALUE packet_s_lcb(VALUE klass, VALUE val)
 {
     unsigned long long n;
     unsigned char buf[9];
+    int i;
 
     if (val == Qnil)
         return rb_str_new("\xfb", 1);
@@ -19,33 +20,34 @@ static VALUE packet_s_lcb(VALUE klass, VALUE val)
     }
     if (n < 65536) {
         buf[0] = '\xfc';
+#ifdef WORDS_BIGENDIAN
         buf[1] = n % 256;
         buf[2] = n / 256;
+#else
+        memcpy(&buf[1], (char *)&n, 2);
+#endif
         return rb_str_new(buf, 3);
     }
     if (n < 16777216) {
         buf[0] = '\xfd';
+#ifdef WORDS_BIGENDIAN
         buf[1] = n % 256;
         n /= 256;
         buf[2] = n % 256;
         buf[3] = n / 256;
+#else
+        memcpy(&buf[1], (char *)&n, 3);
+#endif
         return rb_str_new(buf, 4);
     }
     buf[0] = '\xfe';
-    buf[1] = n % 256;
-    n /= 256;
-    buf[2] = n % 256;
-    n /= 256;
-    buf[3] = n % 256;
-    n /= 256;
-    buf[4] = n % 256;
-    n /= 256;
-    buf[5] = n % 256;
-    n /= 256;
-    buf[6] = n % 256;
-    n /= 256;
-    buf[7] = n % 256;
-    buf[8] = n / 256;
+#ifdef WORDS_BIGENDIAN
+    for (i = 0; i < 8; i++) {
+        buf[i+1] = *((char *)&n + 7-i);
+    }
+#else
+    memcpy(&buf[1], (char *)&n, 8);
+#endif
     return rb_str_new(buf, 9);
 }
 
@@ -80,7 +82,7 @@ static VALUE packet_initialize(VALUE obj, VALUE buf)
 static unsigned long long _packet_lcb(packet_data_t *data)
 {
     unsigned char v;
-    unsigned long long n;
+    unsigned long long n = 0;
 
     if (data->ptr >= data->endp)
         return NIL_VALUE;
@@ -90,15 +92,26 @@ static unsigned long long _packet_lcb(packet_data_t *data)
     case 0xfb:
         return NIL_VALUE;
     case 0xfc:
+#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= ((unsigned int)*data->ptr++) << 8;
+#else
+        memcpy((char *)&n, data->ptr, 2);
+        data->ptr += 2;
+#endif
         return n;
     case 0xfd:
+#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= ((unsigned int)*data->ptr++) << 8;
         n |= ((unsigned int)*data->ptr++) << 16;
+#else
+        memcpy((char *)&n, data->ptr, 3);
+        data->ptr += 3;
+#endif
         return n;
     case 0xfe:
+#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= ((unsigned long long)*data->ptr++) << 8;
         n |= ((unsigned long long)*data->ptr++) << 16;
@@ -107,6 +120,10 @@ static unsigned long long _packet_lcb(packet_data_t *data)
         n |= ((unsigned long long)*data->ptr++) << 40;
         n |= ((unsigned long long)*data->ptr++) << 48;
         n |= ((unsigned long long)*data->ptr++) << 56;
+#else
+        memcpy((char *)&n, data->ptr, 8);
+        data->ptr += 8;
+#endif
         return n;
     default:
         return v;
@@ -180,14 +197,28 @@ static VALUE packet_utiny(VALUE obj)
     return UINT2NUM(*data->ptr++);
 }
 
+static unsigned short _packet_ushort(packet_data_t *data)
+{
+    unsigned short n;
+
+#ifdef WORDS_BIGENDIAN
+    n = *data->ptr++;
+    n |= *data->ptr++ * 0x100;
+    Data_Get_Struct(obj, packet_data_t, data);
+#else
+    memcpy((char *)&n, data->ptr, 2);
+    data->ptr += 2;
+#endif
+    return n;
+}
+
 static VALUE packet_ushort(VALUE obj)
 {
     packet_data_t *data;
     unsigned short n;
 
     Data_Get_Struct(obj, packet_data_t, data);
-    n = *data->ptr++;
-    n |= *data->ptr++ * 0x100;
+    n = _packet_ushort(data);
     return UINT2NUM(n);
 }
 
@@ -197,10 +228,15 @@ static VALUE packet_ulong(VALUE obj)
     unsigned long n;
 
     Data_Get_Struct(obj, packet_data_t, data);
+#ifdef WORDS_BIGENDIAN
     n = *data->ptr++;
     n |= *data->ptr++ * 0x100;
     n |= *data->ptr++ * 0x10000;
     n |= *data->ptr++ * 0x1000000;
+#else
+    memcpy((char *)&n, data->ptr, 4);
+    data->ptr += 4;
+#endif
     return UINT2NUM(n);
 }
 
