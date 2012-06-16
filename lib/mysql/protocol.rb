@@ -420,10 +420,11 @@ class Mysql
     # [Array of Array of Object] all records
     def stmt_retr_all_records(fields, charset)
       check_state :RESULT
+      enc = charset.encoding
       begin
         all_recs = []
-        until (data = read).eof?
-          all_recs.push StmtRawRecord.new(data, fields, charset.encoding)
+        until (pkt = read).eof?
+          all_recs.push StmtRawRecord.new(pkt, fields, enc)
         end
         all_recs
       ensure
