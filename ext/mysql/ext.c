@@ -10,6 +10,7 @@ static VALUE cPacket;
 static VALUE cMysqlTime;
 static VALUE cProtocol;
 static VALUE cStmtRawRecord;
+static VALUE cExecutePacket;
 static VALUE cCharset;
 static VALUE eProtocolError;
 
@@ -213,28 +214,19 @@ static VALUE packet_utiny(VALUE obj)
     return UINT2NUM(*data->ptr++);
 }
 
-static unsigned short _packet_ushort(packet_data_t *data)
-{
-    unsigned short n;
-
-#ifdef WORDS_BIGENDIAN
-    n = *data->ptr++;
-    n |= *data->ptr++ * 0x100;
-    Data_Get_Struct(obj, packet_data_t, data);
-#else
-    memcpy((char *)&n, data->ptr, 2);
-    data->ptr += 2;
-#endif
-    return n;
-}
-
 static VALUE packet_ushort(VALUE obj)
 {
     packet_data_t *data;
     unsigned short n;
 
     Data_Get_Struct(obj, packet_data_t, data);
-    n = _packet_ushort(data);
+#ifdef WORDS_BIGENDIAN
+    n = *data->ptr++;
+    n |= *data->ptr++ * 0x100;
+#else
+    memcpy((char *)&n, data->ptr, 2);
+    data->ptr += 2;
+#endif
     return UINT2NUM(n);
 }
 
@@ -331,17 +323,30 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         return uflag ? INT2FIX(n) : INT2FIX((char)n);
     case TYPE_SHORT:
     case TYPE_YEAR:
+#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
+#else
+        n = 0;
+        memcpy((char *)&n, data->ptr, 2);
+        data->ptr += 2;
+#endif
         return uflag ? INT2FIX(n) : INT2FIX((short)n);
     case TYPE_INT24:
     case TYPE_LONG:
+#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
         n |= *data->ptr++ * 0x10000;
         n |= *data->ptr++ * 0x1000000;
+#else
+        n = 0;
+        memcpy((char *)&n, data->ptr, 4);
+        data->ptr += 4;
+#endif
         return uflag ? UINT2NUM(n) : INT2NUM((long)n);
     case TYPE_LONGLONG:
+#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
         n |= *data->ptr++ * 0x10000;
@@ -351,6 +356,11 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         ll |= *data->ptr++ * 0x10000;
         ll |= *data->ptr++ * 0x1000000;
         ll = (ll<<32) + n;
+#else
+        ll = 0;
+        memcpy((char *)&ll, data->ptr, 8);
+        data->ptr += 8;
+#endif
         return uflag ? ULL2NUM(ll) : LL2NUM((long long)(ll));
     case TYPE_FLOAT:
         memcpy(&f, data->ptr, 4);
@@ -401,7 +411,7 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
     }
 }
 
-static VALUE protocol_value2net(VALUE klass, VALUE obj)
+static VALUE _protocol_value2net(VALUE obj, VALUE netval, VALUE types)
 {
     int type;
     VALUE val;
@@ -495,7 +505,11 @@ static VALUE protocol_value2net(VALUE klass, VALUE obj)
     } else {
         rb_raise(eProtocolError, "class %s is not supported", rb_class2name(rb_obj_class(obj)));
     }
-    return rb_ary_new3(2, INT2FIX(type), val);
+    rb_str_concat(netval, val);
+    buf[0] = type % 256;
+    buf[1] = type / 256;
+    rb_str_cat(types, buf, 2);
+    return Qnil;
 }
 
 VALUE stmt_raw_record_parse_record_packet(VALUE obj)
@@ -538,6 +552,58 @@ VALUE stmt_raw_record_parse_record_packet(VALUE obj)
     return rec;
 }
 
+#define COM_STMT_EXECUTE 23
+
+VALUE execute_packet_serialize(VALUE obj, VALUE stmt_id, VALUE cursor_type, VALUE values)
+{
+    VALUE *ary = RARRAY_PTR(values);
+    int len = RARRAY_LEN(values);
+    char *null_bitmap;
+    int i;
+    int null_bitmap_len = 0;
+    unsigned long int_stmt_id = NUM2ULONG(stmt_id);
+    unsigned char buf[10];
+    VALUE netval;
+    VALUE types;
+    VALUE ret;
+
+    buf[0] = COM_STMT_EXECUTE;
+#ifdef WORDS_BIGENDIAN
+    buf[1] = int_stmt_id % 0x100;
+    buf[2] = (int_stmt_id / 0x100) % 0x100;
+    buf[3] = (int_stmt_id / 0x10000) % 0x100;
+    buf[4] = (int_stmt_id / 0x1000000) % 0x100;
+#else
+    memcpy(&buf[1], (unsigned char *)&int_stmt_id, sizeof(int_stmt_id));
+#endif
+    buf[5] = FIX2INT(cursor_type);
+    buf[6] = 1;
+    buf[7] = 0;
+    buf[8] = 0;
+    buf[9] = 0;
+    ret = rb_str_new(buf, 10);
+
+    if (len == 0) {
+        return rb_str_cat(ret, "\x01", 1);
+    }
+    null_bitmap_len = (len - 1) / 8 + 1;
+    null_bitmap = xmalloc(null_bitmap_len);
+    memset(null_bitmap, 0, null_bitmap_len);
+    netval = rb_str_new("", 0);
+    types = rb_str_new("", 0);
+    for (i = 0; i < RARRAY_LEN(values); i++) {
+        if (ary[i] == Qnil) {
+            null_bitmap[i/8] |= 1 << (i%8);
+        }
+        _protocol_value2net(ary[i], netval, types);
+    }
+    rb_str_cat(ret, null_bitmap, null_bitmap_len);
+    rb_str_cat(ret, "\x01", 1);
+    rb_str_concat(ret, types);
+    rb_str_concat(ret, netval);
+    return ret;
+}
+
 void Init_ext(void)
 {
     cMysql = rb_const_get(rb_cObject, rb_intern("Mysql"));
@@ -545,6 +611,7 @@ void Init_ext(void)
     cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
     cProtocol = rb_const_get(cMysql, rb_intern("Protocol"));
     cStmtRawRecord = rb_const_get(cMysql, rb_intern("StmtRawRecord"));
+    cExecutePacket = rb_const_get(cProtocol, rb_intern("ExecutePacket"));
     cCharset = rb_const_get(cMysql, rb_intern("Charset"));
     eProtocolError = rb_const_get(cMysql, rb_intern("ProtocolError"));
 
@@ -562,8 +629,8 @@ void Init_ext(void)
     rb_define_method(cPacket, "eof?", packet_eofQ, 0);
     rb_define_method(cPacket, "to_s", packet_to_s, 0);
 
-    rb_define_singleton_method(cProtocol, "value2net", protocol_value2net, 1);
-
     rb_define_method(cStmtRawRecord, "parse_record_packet", stmt_raw_record_parse_record_packet, 0);
     rb_define_alias(cStmtRawRecord, "to_a", "parse_record_packet");
+
+    rb_define_singleton_method(cExecutePacket, "serialize", execute_packet_serialize, 3);
 }
