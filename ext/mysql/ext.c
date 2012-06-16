@@ -5,6 +5,14 @@ typedef struct {
     unsigned char *endp;
 } packet_data_t;
 
+static VALUE cMysql;
+static VALUE cPacket;
+static VALUE cMysqlTime;
+static VALUE cProtocol;
+static VALUE cStmtRawRecord;
+static VALUE cCharset;
+static VALUE eProtocolError;
+
 static VALUE packet_s_lcb(VALUE klass, VALUE val)
 {
     unsigned long long n;
@@ -289,7 +297,8 @@ enum {
     TYPE_GEOMETRY    = 255
 };
 
-static VALUE cMysqlTime;
+#define UNSIGNED_FLAG 32
+#define BINARY_CHARSET_NUMBER 63
 
 static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
 {
@@ -302,6 +311,7 @@ static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsign
     int sign;
     unsigned long y, m, d, h, mi, s, bs;
     unsigned char buf[12];
+    int uflag = (unsigned_flag != Qnil && unsigned_flag != Qfalse);
 
     Data_Get_Struct(pkt, packet_data_t, data);
     switch (FIX2INT(type)) {
@@ -312,19 +322,19 @@ static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsign
         return rb_funcall(pkt, rb_intern("lcs"), 0);
     case TYPE_TINY:
         n = *data->ptr++;
-        return unsigned_flag ? INT2FIX(n) : INT2FIX((char)n);
+        return uflag ? INT2FIX(n) : INT2FIX((char)n);
     case TYPE_SHORT:
     case TYPE_YEAR:
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
-        return unsigned_flag ? INT2FIX(n) : INT2FIX((short)n);
+        return uflag ? INT2FIX(n) : INT2FIX((short)n);
     case TYPE_INT24:
     case TYPE_LONG:
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
         n |= *data->ptr++ * 0x10000;
         n |= *data->ptr++ * 0x1000000;
-        return unsigned_flag ? UINT2NUM(n) : INT2NUM((long)n);
+        return uflag ? UINT2NUM(n) : INT2NUM((long)n);
     case TYPE_LONGLONG:
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
@@ -335,7 +345,7 @@ static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsign
         ll |= *data->ptr++ * 0x10000;
         ll |= *data->ptr++ * 0x1000000;
         ll = (ll<<32) + n;
-        return unsigned_flag ? ULL2NUM(ll) : LL2NUM((long long)(ll));
+        return uflag ? ULL2NUM(ll) : LL2NUM((long long)(ll));
     case TYPE_FLOAT:
         memcpy(&f, data->ptr, 4);
         data->ptr += 4;
@@ -386,8 +396,6 @@ static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsign
         rb_raise(rb_eRuntimeError, "%s", "not implemented: type=#{%d}", FIX2INT(type));
     }
 }
-
-static VALUE eProtocolError;
 
 static VALUE protocol_value2net(VALUE klass, VALUE obj)
 {
@@ -486,14 +494,56 @@ static VALUE protocol_value2net(VALUE klass, VALUE obj)
     return rb_ary_new3(2, INT2FIX(type), val);
 }
 
+VALUE stmt_raw_record_parse_record_packet(VALUE obj)
+{
+    VALUE packet;
+    VALUE fields;
+    packet_data_t *data;
+    int nfields;
+    int bitmap_length;
+    char *bitmap;
+    int i;
+    VALUE rec;
+
+    packet = rb_iv_get(obj, "@packet");
+    fields = rb_iv_get(obj, "@fields");
+    Data_Get_Struct(packet, packet_data_t, data);
+    data->ptr++;
+    nfields = RARRAY_LEN(fields);
+    bitmap_length = (nfields+7+2)/8;
+    bitmap = data->ptr;
+    data->ptr += bitmap_length;
+    rec = rb_ary_new2(nfields);
+    for (i = 0; i < nfields; i++) {
+        if ((bitmap[(i+2)/8] >> (i+2)%8) & 1) {
+            rb_ary_push(rec, Qnil);
+        } else {
+            VALUE field, u_flag, value;
+            field = RARRAY_PTR(fields)[i];
+            u_flag = (FIX2INT(rb_iv_get(field, "@flags")) & UNSIGNED_FLAG) == 0 ? Qfalse : Qtrue;
+            value = protocol_net2value(cProtocol, packet, rb_iv_get(field, "@type"), u_flag);
+            if (rb_obj_is_kind_of(value, rb_cNumeric) || rb_obj_is_kind_of(value, cMysqlTime)) {
+                rb_ary_push(rec, value);
+            } else if (FIX2INT(rb_iv_get(field, "@type")) == TYPE_BIT || FIX2INT(rb_iv_get(field, "@charsetnr")) == BINARY_CHARSET_NUMBER) {
+                rb_ary_push(rec, rb_funcall(cCharset, rb_intern("to_binary"), 1, value));
+            } else {
+                rb_ary_push(rec, rb_funcall(cCharset, rb_intern("convert_encoding"), 2, value, rb_iv_get(obj, "@encoding")));
+            }
+        }
+    }
+    return rec;
+}
+
 void Init_ext(void)
 {
-    VALUE cMysql;
-    VALUE cPacket;
-    VALUE cProtocol;
+    cMysql = rb_const_get(rb_cObject, rb_intern("Mysql"));
+    cPacket = rb_const_get(cMysql, rb_intern("Packet"));
+    cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
+    cProtocol = rb_const_get(cMysql, rb_intern("Protocol"));
+    cStmtRawRecord = rb_const_get(cMysql, rb_intern("StmtRawRecord"));
+    cCharset = rb_const_get(cMysql, rb_intern("Charset"));
+    eProtocolError = rb_const_get(cMysql, rb_intern("ProtocolError"));
 
-    cMysql = rb_define_class("Mysql", rb_cObject);
-    cPacket = rb_define_class_under(cMysql, "Packet", rb_cObject);
     rb_define_alloc_func(cPacket, packet_allocate);
     rb_define_singleton_method(cPacket, "lcb", packet_s_lcb, 1);
     rb_define_singleton_method(cPacket, "lcs", packet_s_lcs, 1);
@@ -508,9 +558,9 @@ void Init_ext(void)
     rb_define_method(cPacket, "eof?", packet_eofQ, 0);
     rb_define_method(cPacket, "to_s", packet_to_s, 0);
 
-    cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
-    cProtocol = rb_define_class_under(cMysql, "Protocol", rb_cObject);
-    eProtocolError = rb_const_get(cMysql, rb_intern("ProtocolError"));
     rb_define_singleton_method(cProtocol, "net2value", protocol_net2value, 3);
     rb_define_singleton_method(cProtocol, "value2net", protocol_value2net, 1);
+
+    rb_define_method(cStmtRawRecord, "parse_record_packet", stmt_raw_record_parse_record_packet, 0);
+    rb_define_alias(cStmtRawRecord, "to_a", "parse_record_packet");
 }
