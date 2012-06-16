@@ -151,13 +151,11 @@ static VALUE packet_lcb(VALUE obj)
     return ULL2NUM(n);
 }
 
-static VALUE packet_lcs(VALUE obj)
+static VALUE _packet_lcs(packet_data_t *data)
 {
-    packet_data_t *data;
     unsigned long long l;
     VALUE ret;
 
-    Data_Get_Struct(obj, packet_data_t, data);
     l = _packet_lcb(data);
     if (l == NIL_VALUE)
         return Qnil;
@@ -166,6 +164,16 @@ static VALUE packet_lcs(VALUE obj)
     ret = rb_str_new(data->ptr, l);
     data->ptr += l;
     return ret;
+}
+
+static VALUE packet_lcs(VALUE obj)
+{
+    packet_data_t *data;
+    unsigned long long l;
+    VALUE ret;
+
+    Data_Get_Struct(obj, packet_data_t, data);
+    return _packet_lcs(data);
 }
 
 static VALUE packet_read(VALUE obj, VALUE len)
@@ -300,9 +308,8 @@ enum {
 #define UNSIGNED_FLAG 32
 #define BINARY_CHARSET_NUMBER 63
 
-static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsigned_flag)
+static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
 {
-    packet_data_t *data;
     unsigned long n;
     unsigned long long ll;
     float f;
@@ -311,15 +318,14 @@ static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsign
     int sign;
     unsigned long y, m, d, h, mi, s, bs;
     unsigned char buf[12];
-    int uflag = (unsigned_flag != Qnil && unsigned_flag != Qfalse);
 
-    Data_Get_Struct(pkt, packet_data_t, data);
-    switch (FIX2INT(type)) {
+    switch (type) {
     case TYPE_STRING:
     case TYPE_VAR_STRING:
     case TYPE_NEWDECIMAL:
     case TYPE_BLOB:
-        return rb_funcall(pkt, rb_intern("lcs"), 0);
+    case TYPE_BIT:
+        return _packet_lcs(data);
     case TYPE_TINY:
         n = *data->ptr++;
         return uflag ? INT2FIX(n) : INT2FIX((char)n);
@@ -390,10 +396,8 @@ static VALUE protocol_net2value(VALUE klass, VALUE pkt, VALUE type, VALUE unsign
         bs = buf[8] | buf[9]<<8 | buf[10]<<16 | buf[11]<<24;;
         h += d * 24;
         return rb_funcall(cMysqlTime, rb_intern("new"), 8, ULONG2NUM(0), ULONG2NUM(0), ULONG2NUM(0), ULONG2NUM(h), ULONG2NUM(mi), ULONG2NUM(s), (sign != 0 ? Qtrue : Qfalse), ULONG2NUM(bs));
-    case TYPE_BIT:
-        return rb_funcall(pkt, rb_intern("lcs"), 0);
     default:
-        rb_raise(rb_eRuntimeError, "%s", "not implemented: type=#{%d}", FIX2INT(type));
+        rb_raise(rb_eRuntimeError, "%s", "not implemented: type=#{%d}", type);
     }
 }
 
@@ -520,8 +524,8 @@ VALUE stmt_raw_record_parse_record_packet(VALUE obj)
         } else {
             VALUE field, u_flag, value;
             field = RARRAY_PTR(fields)[i];
-            u_flag = (FIX2INT(rb_iv_get(field, "@flags")) & UNSIGNED_FLAG) == 0 ? Qfalse : Qtrue;
-            value = protocol_net2value(cProtocol, packet, rb_iv_get(field, "@type"), u_flag);
+            u_flag = FIX2INT(rb_iv_get(field, "@flags")) & UNSIGNED_FLAG;
+            value = _protocol_net2value(data, FIX2INT(rb_iv_get(field, "@type")), u_flag);
             if (rb_obj_is_kind_of(value, rb_cNumeric) || rb_obj_is_kind_of(value, cMysqlTime)) {
                 rb_ary_push(rec, value);
             } else if (FIX2INT(rb_iv_get(field, "@type")) == TYPE_BIT || FIX2INT(rb_iv_get(field, "@charsetnr")) == BINARY_CHARSET_NUMBER) {
@@ -558,7 +562,6 @@ void Init_ext(void)
     rb_define_method(cPacket, "eof?", packet_eofQ, 0);
     rb_define_method(cPacket, "to_s", packet_to_s, 0);
 
-    rb_define_singleton_method(cProtocol, "net2value", protocol_net2value, 3);
     rb_define_singleton_method(cProtocol, "value2net", protocol_value2net, 1);
 
     rb_define_method(cStmtRawRecord, "parse_record_packet", stmt_raw_record_parse_record_packet, 0);
