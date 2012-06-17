@@ -29,24 +29,16 @@ static VALUE packet_s_lcb(VALUE klass, VALUE val)
     }
     if (n < 65536) {
         buf[0] = '\xfc';
-#ifdef WORDS_BIGENDIAN
         buf[1] = n % 256;
         buf[2] = n / 256;
-#else
-        memcpy(&buf[1], (char *)&n, 2);
-#endif
         return rb_str_new(buf, 3);
     }
     if (n < 16777216) {
         buf[0] = '\xfd';
-#ifdef WORDS_BIGENDIAN
         buf[1] = n % 256;
         n /= 256;
         buf[2] = n % 256;
         buf[3] = n / 256;
-#else
-        memcpy(&buf[1], (char *)&n, 3);
-#endif
         return rb_str_new(buf, 4);
     }
     buf[0] = '\xfe';
@@ -101,26 +93,15 @@ static unsigned long long _packet_lcb(packet_data_t *data)
     case 0xfb:
         return NIL_VALUE;
     case 0xfc:
-#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= ((unsigned int)*data->ptr++) << 8;
-#else
-        memcpy((char *)&n, data->ptr, 2);
-        data->ptr += 2;
-#endif
         return n;
     case 0xfd:
-#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= ((unsigned int)*data->ptr++) << 8;
         n |= ((unsigned int)*data->ptr++) << 16;
-#else
-        memcpy((char *)&n, data->ptr, 3);
-        data->ptr += 3;
-#endif
         return n;
     case 0xfe:
-#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= ((unsigned long long)*data->ptr++) << 8;
         n |= ((unsigned long long)*data->ptr++) << 16;
@@ -129,10 +110,6 @@ static unsigned long long _packet_lcb(packet_data_t *data)
         n |= ((unsigned long long)*data->ptr++) << 40;
         n |= ((unsigned long long)*data->ptr++) << 48;
         n |= ((unsigned long long)*data->ptr++) << 56;
-#else
-        memcpy((char *)&n, data->ptr, 8);
-        data->ptr += 8;
-#endif
         return n;
     default:
         return v;
@@ -220,13 +197,8 @@ static VALUE packet_ushort(VALUE obj)
     unsigned short n;
 
     Data_Get_Struct(obj, packet_data_t, data);
-#ifdef WORDS_BIGENDIAN
     n = *data->ptr++;
     n |= *data->ptr++ * 0x100;
-#else
-    memcpy((char *)&n, data->ptr, 2);
-    data->ptr += 2;
-#endif
     return UINT2NUM(n);
 }
 
@@ -236,15 +208,10 @@ static VALUE packet_ulong(VALUE obj)
     unsigned long n;
 
     Data_Get_Struct(obj, packet_data_t, data);
-#ifdef WORDS_BIGENDIAN
     n = *data->ptr++;
     n |= *data->ptr++ * 0x100;
     n |= *data->ptr++ * 0x10000;
     n |= *data->ptr++ * 0x1000000;
-#else
-    memcpy((char *)&n, data->ptr, 4);
-    data->ptr += 4;
-#endif
     return UINT2NUM(n);
 }
 
@@ -323,30 +290,17 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         return uflag ? INT2FIX(n) : INT2FIX((char)n);
     case TYPE_SHORT:
     case TYPE_YEAR:
-#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
-#else
-        n = 0;
-        memcpy((char *)&n, data->ptr, 2);
-        data->ptr += 2;
-#endif
         return uflag ? INT2FIX(n) : INT2FIX((short)n);
     case TYPE_INT24:
     case TYPE_LONG:
-#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
         n |= *data->ptr++ * 0x10000;
         n |= *data->ptr++ * 0x1000000;
-#else
-        n = 0;
-        memcpy((char *)&n, data->ptr, 4);
-        data->ptr += 4;
-#endif
         return uflag ? UINT2NUM(n) : INT2NUM((long)n);
     case TYPE_LONGLONG:
-#ifdef WORDS_BIGENDIAN
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
         n |= *data->ptr++ * 0x10000;
@@ -356,11 +310,6 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         ll |= *data->ptr++ * 0x10000;
         ll |= *data->ptr++ * 0x1000000;
         ll = (ll<<32) + n;
-#else
-        ll = 0;
-        memcpy((char *)&ll, data->ptr, 8);
-        data->ptr += 8;
-#endif
         return uflag ? ULL2NUM(ll) : LL2NUM((long long)(ll));
     case TYPE_FLOAT:
         memcpy(&f, data->ptr, 4);
@@ -568,14 +517,10 @@ VALUE execute_packet_serialize(VALUE obj, VALUE stmt_id, VALUE cursor_type, VALU
     VALUE ret;
 
     buf[0] = COM_STMT_EXECUTE;
-#ifdef WORDS_BIGENDIAN
     buf[1] = int_stmt_id % 0x100;
     buf[2] = (int_stmt_id / 0x100) % 0x100;
     buf[3] = (int_stmt_id / 0x10000) % 0x100;
     buf[4] = (int_stmt_id / 0x1000000) % 0x100;
-#else
-    memcpy(&buf[1], (unsigned char *)&int_stmt_id, sizeof(int_stmt_id));
-#endif
     buf[5] = FIX2INT(cursor_type);
     buf[6] = 1;
     buf[7] = 0;
