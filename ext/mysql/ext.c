@@ -363,77 +363,92 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
 static VALUE _protocol_value2net(VALUE obj, VALUE netval, VALUE types)
 {
     int type;
-    VALUE val;
+    char *ptr;
+    int len;
+    unsigned char buf[8];
+    long n;
+    long long ll;
+    unsigned long long ull;
+    double dbl;
+
     if (obj == Qnil) {
         type = TYPE_NULL;
-        val = rb_str_new("", 0);
+        ptr = NULL;
+        len = 0;
     } else if (FIXNUM_P(obj)) {
-        long n;
         int flag = 0;
-        char buf[sizeof(long)], buf2[sizeof(long)];
 
         n = FIX2LONG(obj);
         if (n >= 0) {
             flag = 0x8000;
         }
-        memcpy(buf, (char *)&n, sizeof(n));
+        ptr = (char *)&n;
 #ifdef WORDS_BIGENDIAN
         for (i=0; i<sizeof(n); i++) {
-            buf2[i] = buf[sizeof(n)-i];
+            buf[i] = n % 0x100;
+            n /= 0x100;
         }
-        memcpy(buf, buf2, sizeof(buf));
+        ptr = buf;
 #endif
         if (-0x80 <= n && n < 0x100) {
             type = TYPE_TINY | flag;
-            val = rb_str_new(buf, 1);
+            len = 1;
         } else if (-0x8000 <= n && n < 0x10000) {
             type = TYPE_SHORT | flag;
-            val = rb_str_new(buf, 2);
+            len = 2;
 #if SIZEOF_LONG == 4
         } else {
             type = TYPE_LONG | flag;
-            val = rb_str_new(buf, 4);
+            len = 4;
 #else
         } else if (-0x80000000 <= n && n < 0x100000000) {
             type = TYPE_LONG | flag;
-            val = rb_str_new(buf, 4);
+            len = 4;
         } else {
             type = TYPE_LONGLONG | flag;
-            val = rb_str_new(buf, 8);
+            len = 8;
 #endif
         }
     } else if (TYPE(obj) == T_BIGNUM) {
-        char buf[sizeof(long long)], buf2[sizeof(long long)];
         if (RBIGNUM_SIGN(obj)) {
-            unsigned long long ull;
             ull = NUM2ULL(obj);
-            memcpy(buf, (char *)&ull, sizeof(ull));
+            ptr = (char *)&ull;
             type = TYPE_LONGLONG | 0x8000;
-        } else {
-            long long ll;
-            ll = NUM2LL(obj);
-            memcpy(buf, (char *)&ll, sizeof(ll));
-            type = TYPE_LONGLONG;
-        }
+            len = sizeof(ull);
 #ifdef WORDS_BIGENDIAN
-        for (i=0; i<sizeof(buf); i++) {
-            buf2[i] = buf[sizeof(buf)-i];
-        }
-        memcpy(buf, buf2, sizeof(buf));
+            for (i=0; i<len; i++) {
+                buf[i] = ull % 0x100;
+                ull /= 0x100;
+            }
+            ptr = buf;
 #endif
-        val = rb_str_new(buf, sizeof(buf));
+        } else {
+            ll = NUM2LL(obj);
+            ptr = (char *)&ll;
+            type = TYPE_LONGLONG;
+            len = sizeof(ll);
+#ifdef WORDS_BIGENDIAN
+            for (i=0; i<len; i++) {
+                buf[i] = ll % 0x100;
+                ll /= 0x100;
+            }
+            ptr = buf;
+#endif
+        }
     } else if (rb_obj_is_kind_of(obj, rb_cFloat)) {
-        double dbl;
-
         dbl = NUM2DBL(obj);
         type = TYPE_DOUBLE;
-        val = rb_str_new((char *)&dbl, sizeof(dbl));
+        ptr = (char *)&dbl;
+        len = sizeof(dbl);
     } else if (rb_obj_is_kind_of(obj, rb_cString)) {
+        VALUE val;
+
         type = TYPE_STRING;
         val = packet_s_lcs(0, obj);
+        ptr = RSTRING_PTR(val);
+        len = RSTRING_LEN(val);
     } else if (rb_obj_is_kind_of(obj, cMysqlTime) || rb_obj_is_kind_of(obj, rb_cTime)) {
         int year, month, day, hour, min, sec;
-        char buf[8];
 
         year = FIX2INT(rb_funcall(obj, rb_intern("year"), 0));
         month = FIX2INT(rb_funcall(obj, rb_intern("month"), 0));
@@ -450,11 +465,12 @@ static VALUE _protocol_value2net(VALUE obj, VALUE netval, VALUE types)
         buf[5] = hour;
         buf[6] = min;
         buf[7] = sec;
-        val = rb_str_new(buf, 8);
+        ptr = buf;
+        len = 8;
     } else {
         rb_raise(eProtocolError, "class %s is not supported", rb_class2name(rb_obj_class(obj)));
     }
-    rb_str_concat(netval, val);
+    rb_str_cat(netval, ptr, len);
     buf[0] = type % 256;
     buf[1] = type / 256;
     rb_str_cat(types, buf, 2);
