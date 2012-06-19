@@ -9,6 +9,7 @@ static VALUE cMysql;
 static VALUE cPacket;
 static VALUE cMysqlTime;
 static VALUE cProtocol;
+static VALUE cRawRecord;
 static VALUE cStmtRawRecord;
 static VALUE cExecutePacket;
 static VALUE cCharset;
@@ -477,6 +478,31 @@ static VALUE _protocol_value2net(VALUE obj, VALUE netval, VALUE types)
     return Qnil;
 }
 
+VALUE raw_record_to_a(VALUE obj)
+{
+    VALUE packet;
+    VALUE ary;
+    packet_data_t *data;
+    int nfields;
+    int i;
+    VALUE str;
+    VALUE encoding;
+
+    Data_Get_Struct(rb_iv_get(obj, "@packet"), packet_data_t, data);
+    nfields = FIX2INT(rb_iv_get(obj, "@nfields"));
+    ary = rb_ary_new2(nfields);
+    encoding = rb_iv_get(obj, "@encoding");
+    for (i = 0; i < nfields; i++) {
+        str = _packet_lcs(data);
+#if RUBY_API_VERSION_CODE >= 10900
+        str = rb_funcall(str, rb_intern("force_encoding"), 1, encoding);
+        str = rb_funcall(str, rb_intern("encode"), 0);
+#endif
+        rb_ary_push(ary, str);
+    }
+    return ary;
+}
+
 VALUE stmt_raw_record_parse_record_packet(VALUE obj)
 {
     VALUE packet;
@@ -571,6 +597,7 @@ void Init_ext(void)
     cPacket = rb_const_get(cMysql, rb_intern("Packet"));
     cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
     cProtocol = rb_const_get(cMysql, rb_intern("Protocol"));
+    cRawRecord = rb_const_get(cMysql, rb_intern("RawRecord"));
     cStmtRawRecord = rb_const_get(cMysql, rb_intern("StmtRawRecord"));
     cExecutePacket = rb_const_get(cProtocol, rb_intern("ExecutePacket"));
     cCharset = rb_const_get(cMysql, rb_intern("Charset"));
@@ -589,6 +616,8 @@ void Init_ext(void)
     rb_define_method(cPacket, "ulong", packet_ulong, 0);
     rb_define_method(cPacket, "eof?", packet_eofQ, 0);
     rb_define_method(cPacket, "to_s", packet_to_s, 0);
+
+    rb_define_method(cRawRecord, "to_a", raw_record_to_a, 0);
 
     rb_define_method(cStmtRawRecord, "parse_record_packet", stmt_raw_record_parse_record_packet, 0);
     rb_define_alias(cStmtRawRecord, "to_a", "parse_record_packet");
