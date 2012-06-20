@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
-  s.name = 'ruby-mysql-jruby'
+  s.name = 'ruby-mysql'
   s.version = '2.9.10'
-  s.summary = 'MySQL connector (jruby friendlier)'
+  s.summary = 'MySQL connector'
   s.authors = ['Tomita Masahiro']
   s.date = '2012-06-20'
   s.description = 'This is MySQL connector. pure Ruby version'
