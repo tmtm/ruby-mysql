@@ -455,14 +455,14 @@ class Mysql
     def set_state(st)
       @state = st
       if st == :READY
-        gc_disabled = GC.disable
+        gc_disabled = GC.disable unless RUBY_PLATFORM == 'java'
         begin
           while st = @gc_stmt_queue.shift
             reset
             write [COM_STMT_CLOSE, st].pack("CV")
           end
         ensure
-          GC.enable unless gc_disabled
+          GC.enable unless gc_disabled unless RUBY_PLATFORM == 'java'
         end
       end
     end
