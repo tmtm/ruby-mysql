@@ -494,9 +494,11 @@ VALUE raw_record_to_a(VALUE obj)
     encoding = rb_iv_get(obj, "@encoding");
     for (i = 0; i < nfields; i++) {
         str = _packet_lcs(data);
-#if RUBY_API_VERSION_CODE >= 10900
-        str = rb_funcall(str, rb_intern("force_encoding"), 1, encoding);
-        str = rb_funcall(str, rb_intern("encode"), 0);
+#ifdef HAVE_RUBY_ENCODING_H
+        if (str != Qnil) {
+            str = rb_funcall(str, rb_intern("force_encoding"), 1, encoding);
+            str = rb_funcall(str, rb_intern("encode"), 0);
+        }
 #endif
         rb_ary_push(ary, str);
     }
