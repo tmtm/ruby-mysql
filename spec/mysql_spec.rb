@@ -1719,10 +1719,20 @@ if defined? Encoding
 
     describe 'default_internal is CP932' do
       before do
+        @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
         Encoding.default_internal = 'CP932'
       end
       it 'is converted to CP932' do
         @m.query('select "あいう"').fetch.should == ["\x82\xA0\x82\xA2\x82\xA4".force_encoding("CP932")]
+      end
+      it 'data is stored as is' do
+        @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch.should == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF']
+      end
+      it 'By simple query, charset of retrieved data is connection charset' do
+        @m.query('select utf8,cp932,eucjp,bin from t').fetch.should == [@cp932, @cp932, @cp932, @bin]
+      end
+      it 'By prepared statement, charset of retrieved data is connection charset except for binary' do
+        @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch.should == [@cp932, @cp932, @cp932, @bin]
       end
     end
 
@@ -1746,7 +1756,7 @@ if defined? Encoding
         @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch.should == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF']
       end
       it 'By simple query, charset of retrieved data is connection charset' do
-        @m.query('select utf8,cp932,eucjp,bin from t').fetch.should == [@utf8, @utf8, @utf8, @bin.dup.force_encoding("UTF-8")]
+        @m.query('select utf8,cp932,eucjp,bin from t').fetch.should == [@utf8, @utf8, @utf8, @bin]
       end
       it 'By prepared statement, charset of retrieved data is connection charset except for binary' do
         @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch.should == [@utf8, @utf8, @utf8, @bin]
@@ -1761,7 +1771,7 @@ if defined? Encoding
         @m.query("select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t").fetch.should == ["E38184E3828DE381AF", "82A282EB82CD", "A4A4A4EDA4CF", "E38184E3828DE381AF"]
       end
       it 'By simple query, charset of retrieved data is connection charset' do
-        @m.query("select utf8,cp932,eucjp,bin from t").fetch.should == [@utf8, @utf8, @utf8, @utf8]
+        @m.query("select utf8,cp932,eucjp,bin from t").fetch.should == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding('ASCII-8BIT')]
       end
       it 'By prepared statement, charset of retrieved data is connection charset except for binary' do
         @m.prepare("select utf8,cp932,eucjp,bin from t").execute.fetch.should == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding("ASCII-8BIT")]

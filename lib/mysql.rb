@@ -721,7 +721,7 @@ class Mysql
     def initialize(fields, protocol=nil)
       super fields
       return unless protocol
-      @records = protocol.retr_all_records fields.size
+      @records = protocol.retr_all_records fields
       fields.each{|f| f.result = self}  # for calculating max_field
     end
 

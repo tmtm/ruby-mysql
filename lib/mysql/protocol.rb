@@ -283,16 +283,16 @@ class Mysql
 
     # Retrieve all records for simple query
     # === Argument
-    # nfields :: [Integer] number of fields
+    # fields :: [Array<Mysql::Field>] number of fields
     # === Return
     # [Array of Array of String] all records
-    def retr_all_records(nfields)
+    def retr_all_records(fields)
       check_state :RESULT
       enc = charset.encoding
       begin
         all_recs = []
         until (pkt = read).eof?
-          all_recs.push RawRecord.new(pkt, nfields, enc)
+          all_recs.push RawRecord.new(pkt, fields, enc)
         end
         pkt.read(3)
         @server_status = pkt.utiny
@@ -731,14 +731,16 @@ class Mysql
   end
 
   class RawRecord
-    def initialize(packet, nfields, encoding)
-      @packet, @nfields, @encoding = packet, nfields, encoding
+    def initialize(packet, fields, encoding)
+      @packet, @fields, @encoding = packet, fields, encoding
     end
 
     def to_a
-      @nfields.times.map do
+      @fields.map do |f|
         if s = @packet.lcs
-          s = Charset.convert_encoding(s, @encoding)
+          unless f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
+            s = Charset.convert_encoding(s, @encoding)
+          end
         end
         s
       end
