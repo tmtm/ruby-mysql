@@ -1,3 +1,4 @@
+# coding: ascii-8bit
 class Mysql
   class Packet
     # convert Numeric to LengthCodedBinary
