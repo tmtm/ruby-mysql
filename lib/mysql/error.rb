@@ -742,7 +742,30 @@ class Mysql
     ER_PLUGIN_IS_PERMANENT                                    = 1702
     ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE_MIN                 = 1703
     ER_SLAVE_HEARTBEAT_VALUE_OUT_OF_RANGE_MAX                 = 1704
-    ER_ERROR_LAST                                             = 1704
+    ER_STMT_CACHE_FULL                                        = 1705
+    ER_MULTI_UPDATE_KEY_CONFLICT                              = 1706
+    ER_TABLE_NEEDS_REBUILD                                    = 1707
+    WARN_OPTION_BELOW_LIMIT                                   = 1708
+    ER_INDEX_COLUMN_TOO_LONG                                  = 1709
+    ER_ERROR_IN_TRIGGER_BODY                                  = 1710
+    ER_ERROR_IN_UNKNOWN_TRIGGER_BODY                          = 1711
+    ER_INDEX_CORRUPT                                          = 1712
+    ER_UNDO_RECORD_TOO_BIG                                    = 1713
+    ER_BINLOG_UNSAFE_INSERT_IGNORE_SELECT                     = 1714
+    ER_BINLOG_UNSAFE_INSERT_SELECT_UPDATE                     = 1715
+    ER_BINLOG_UNSAFE_REPLACE_SELECT                           = 1716
+    ER_BINLOG_UNSAFE_CREATE_IGNORE_SELECT                     = 1717
+    ER_BINLOG_UNSAFE_CREATE_REPLACE_SELECT                    = 1718
+    ER_BINLOG_UNSAFE_UPDATE_IGNORE                            = 1719
+    ER_PLUGIN_NO_UNINSTALL                                    = 1720
+    ER_PLUGIN_NO_INSTALL                                      = 1721
+    ER_BINLOG_UNSAFE_WRITE_AUTOINC_SELECT                     = 1722
+    ER_BINLOG_UNSAFE_CREATE_SELECT_AUTOINC                    = 1723
+    ER_BINLOG_UNSAFE_INSERT_TWO_KEYS                          = 1724
+    ER_TABLE_IN_FK_CHECK                                      = 1725
+    ER_UNSUPPORTED_ENGINE                                     = 1726
+    ER_BINLOG_UNSAFE_AUTOINC_NOT_FIRST                        = 1727
+    ER_ERROR_LAST                                             = 1727
   end
 
   ServerError.define_error_class(/\AER_/)
