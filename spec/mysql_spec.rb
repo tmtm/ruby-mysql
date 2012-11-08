@@ -338,13 +338,14 @@ describe 'Mysql' do
   end
 
   describe '#kill' do
-    it 'returns self' do
-      @m.kill(@m.thread_id).should == @m
+    before do
+      @m2 = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     end
-    it 'kill specified connection' do
-      m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-      m.list_processes.map(&:first).should be_include @m.thread_id.to_s
-      m.close
+    after do
+      @m2.close rescue nil
+    end
+    it 'returns self' do
+      @m.kill(@m2.thread_id).should == @m
     end
   end
 
