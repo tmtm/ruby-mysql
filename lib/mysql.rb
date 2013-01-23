@@ -671,7 +671,7 @@ class Mysql
     def each(&block)
       return enum_for(:each) unless block
       while rec = fetch
-        block.call rec
+        block.call *rec
       end
       self
     end
@@ -965,7 +965,7 @@ class Mysql
     def each(&block)
       return enum_for(:each) unless block
       while rec = fetch
-        block.call rec
+        block.call *rec
       end
       self
     end

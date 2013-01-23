@@ -755,7 +755,7 @@ describe 'Mysql::Result' do
 
   it '#each iterate block with a record' do
     expect = [["1","abc"], ["2","defg"], ["3","hi"], ["4",nil]]
-    @res.each do |a|
+    @res.each do |*a|
       a.should == expect.shift
     end
   end
@@ -1030,7 +1030,7 @@ describe 'Mysql::Stmt' do
       [2, 'def', Mysql::Time.new(2112,9,3,12,34,56)],
       [3, '123', nil],
     ]
-    @s.each do |a|
+    @s.each do |*a|
       a.should == expect.shift
     end
   end
@@ -1045,7 +1045,7 @@ describe 'Mysql::Stmt' do
     @s.prepare 'insert into t values (?)'
     @s.execute 123
     @s.execute '456'
-    @m.query('select * from t').entries.should == [['123'], ['456']]
+    @m.query('select * from t').entries.should == ['123', '456']
   end
 
   it '#execute with various arguments' do
@@ -1173,16 +1173,16 @@ describe 'Mysql::Stmt' do
     @s.execute
     if defined? Encoding
       @s.entries.should == [
-        ["\x00".force_encoding('ASCII-8BIT')],
-        ["\xff".force_encoding('ASCII-8BIT')],
-        ["\x7f".force_encoding('ASCII-8BIT')],
-        ["\xff".force_encoding('ASCII-8BIT')],
-        ["\xff".force_encoding('ASCII-8BIT')],
-        ["\xff".force_encoding('ASCII-8BIT')],
-        ["\xff".force_encoding('ASCII-8BIT')],
+        "\x00".force_encoding('ASCII-8BIT'),
+        "\xff".force_encoding('ASCII-8BIT'),
+        "\x7f".force_encoding('ASCII-8BIT'),
+        "\xff".force_encoding('ASCII-8BIT'),
+        "\xff".force_encoding('ASCII-8BIT'),
+        "\xff".force_encoding('ASCII-8BIT'),
+        "\xff".force_encoding('ASCII-8BIT'),
       ]
     else
-      @s.entries.should == [["\x00"], ["\xff"], ["\x7f"], ["\xff"], ["\xff"], ["\xff"], ["\xff"]]
+      @s.entries.should == ["\x00", "\xff", "\x7f", "\xff", "\xff", "\xff", "\xff"]
     end
   end
 
@@ -1193,19 +1193,19 @@ describe 'Mysql::Stmt' do
     @s.execute
     if defined? Encoding
       @s.entries.should == [
-        ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
-        ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
-        ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
-        ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
-        ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+        "\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT'),
+        "\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT'),
+        "\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT'),
+        "\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT'),
+        "\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT'),
       ]
     else
       @s.entries.should == [
-        ["\x00\x00\x00\x00\x00\x00\x00\x00"],
-        ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-        ["\x00\x00\x00\x01\x00\x00\x00\x00"],
-        ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-        ["\xff\xff\xff\xff\xff\xff\xff\xff"],
+        "\x00\x00\x00\x00\x00\x00\x00\x00",
+        "\xff\xff\xff\xff\xff\xff\xff\xff",
+        "\x00\x00\x00\x01\x00\x00\x00\x00",
+        "\xff\xff\xff\xff\xff\xff\xff\xff",
+        "\xff\xff\xff\xff\xff\xff\xff\xff",
       ]
     end
   end
@@ -1215,7 +1215,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [-1], [127], [-128], [127], [-128]]
+    @s.entries.should == [0, -1, 127, -128, 127, -128]
   end
 
   it '#fetch tinyint unsigned column' do
@@ -1223,7 +1223,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [0], [127], [0], [255], [0], [255]]
+    @s.entries.should == [0, 0, 127, 0, 255, 0, 255]
   end
 
   it '#fetch smallint column' do
@@ -1231,7 +1231,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(32767),(-32768),(65535),(-65535),(65536)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [-1], [32767], [-32768], [32767], [-32768], [32767]]
+    @s.entries.should == [0, -1, 32767, -32768, 32767, -32768, 32767]
   end
 
   it '#fetch smallint unsigned column' do
@@ -1239,7 +1239,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(32767),(-32768),(65535),(-65535),(65536)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [0], [32767], [0], [65535], [0], [65535]]
+    @s.entries.should == [0, 0, 32767, 0, 65535, 0, 65535]
   end
 
   it '#fetch mediumint column' do
@@ -1247,7 +1247,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(8388607),(-8388608),(16777215),(-16777215),(16777216)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [-1], [8388607], [-8388608], [8388607], [-8388608], [8388607]]
+    @s.entries.should == [0, -1, 8388607, -8388608, 8388607, -8388608, 8388607]
   end
 
   it '#fetch mediumint unsigned column' do
@@ -1255,7 +1255,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(8388607),(-8388608),(16777215),(-16777215),(16777216)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [0], [8388607], [0], [16777215], [0], [16777215]]
+    @s.entries.should == [0, 0, 8388607, 0, 16777215, 0, 16777215]
   end
 
   it '#fetch int column' do
@@ -1263,7 +1263,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(2147483647),(-2147483648),(4294967295),(-4294967295),(4294967296)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [-1], [2147483647], [-2147483648], [2147483647], [-2147483648], [2147483647]]
+    @s.entries.should == [0, -1, 2147483647, -2147483648, 2147483647, -2147483648, 2147483647]
   end
 
   it '#fetch int unsigned column' do
@@ -1271,7 +1271,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(2147483647),(-2147483648),(4294967295),(-4294967295),(4294967296)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [0], [2147483647], [0], [4294967295], [0], [4294967295]]
+    @s.entries.should == [0, 0, 2147483647, 0, 4294967295, 0, 4294967295]
   end
 
   it '#fetch bigint column' do
@@ -1279,7 +1279,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(9223372036854775807),(-9223372036854775808),(18446744073709551615),(-18446744073709551615),(18446744073709551616)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [-1], [9223372036854775807], [-9223372036854775808], [9223372036854775807], [-9223372036854775808], [9223372036854775807]]
+    @s.entries.should == [0, -1, 9223372036854775807, -9223372036854775808, 9223372036854775807, -9223372036854775808, 9223372036854775807]
   end
 
   it '#fetch bigint unsigned column' do
@@ -1287,7 +1287,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(-1),(9223372036854775807),(-9223372036854775808),(18446744073709551615),(-18446744073709551615),(18446744073709551616)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [0], [9223372036854775807], [0], [18446744073709551615], [0], [18446744073709551615]]
+    @s.entries.should == [0, 0, 9223372036854775807, 0, 18446744073709551615, 0, 18446744073709551615]
   end
 
   it '#fetch float column' do
@@ -1343,7 +1343,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(9999999999),(-9999999999),(10000000000),(-10000000000)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [["0"], ["9999999999"], ["-9999999999"], ["9999999999"], ["-9999999999"]]
+    @s.entries.should == ["0", "9999999999", "-9999999999", "9999999999", "-9999999999"]
   end
 
   it '#fetch decimal unsigned column' do
@@ -1351,7 +1351,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(9999999998),(9999999999),(-9999999998),(-9999999999),(10000000000),(-10000000000)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [["0"], ["9999999998"], ["9999999999"], ["0"], ["0"], ["9999999999"], ["0"]]
+    @s.entries.should == ["0", "9999999998", "9999999999", "0", "0", "9999999999", "0"]
   end
 
   it '#fetch date column' do
@@ -1404,7 +1404,7 @@ describe 'Mysql::Stmt' do
     @m.query 'insert into t values (0),(70),(69),(1901),(2155)'
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[0], [1970], [2069], [1901], [2155]]
+    @s.entries.should == [0, 1970, 2069, 1901, 2155]
   end
 
   it '#fetch char column' do
@@ -1412,7 +1412,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ['abc']]
+    @s.entries.should == [nil, 'abc']
   end
 
   it '#fetch varchar column' do
@@ -1420,7 +1420,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ['abc']]
+    @s.entries.should == [nil, 'abc']
   end
 
   it '#fetch binary column' do
@@ -1428,7 +1428,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc\0\0\0\0\0\0\0"]]
+    @s.entries.should == [nil, "abc\0\0\0\0\0\0\0"]
   end
 
   it '#fetch varbinary column' do
@@ -1436,7 +1436,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch tinyblob column' do
@@ -1444,7 +1444,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch tinytext column' do
@@ -1452,7 +1452,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch blob column' do
@@ -1460,7 +1460,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch text column' do
@@ -1468,7 +1468,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch mediumblob column' do
@@ -1476,7 +1476,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch mediumtext column' do
@@ -1484,7 +1484,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch longblob column' do
@@ -1492,7 +1492,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch longtext column' do
@@ -1500,7 +1500,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),('abc')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [nil, "abc"]
   end
 
   it '#fetch enum column' do
@@ -1508,7 +1508,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),(0),(1),(2),('abc'),('def'),('ghi')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], [''], ['abc'], ['def'], ['abc'], ['def'], ['']]
+    @s.entries.should == [nil, '', 'abc', 'def', 'abc', 'def', '']
   end
 
   it '#fetch set column' do
@@ -1516,7 +1516,7 @@ describe 'Mysql::Stmt' do
     @m.query "insert into t values (null),(0),(1),(2),(3),('abc'),('def'),('abc,def'),('ghi')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], [''], ['abc'], ['def'], ['abc,def'], ['abc'], ['def'], ['abc,def'], ['']]
+    @s.entries.should == [nil, '', 'abc', 'def', 'abc,def', 'abc', 'def', 'abc,def', '']
   end
 
   it '#field_count' do
