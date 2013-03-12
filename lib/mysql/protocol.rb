@@ -163,7 +163,7 @@ class Mysql
       @write_timeout = write_timeout
       begin
         Timeout.timeout conn_timeout do
-          if host.nil? or host.empty? or host == "localhost"
+          if host.nil? or host.empty?
             socket ||= ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
             @sock = UNIXSocket.new socket
           else
