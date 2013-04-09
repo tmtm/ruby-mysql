@@ -19,20 +19,19 @@ static VALUE packet_s_lcb(VALUE klass, VALUE val)
 {
     unsigned long long n;
     unsigned char buf[9];
-    int i;
 
     if (val == Qnil)
         return rb_str_new("\xfb", 1);
     n = NUM2ULL(val);
     if (n < 251) {
         buf[0] = n;
-        return rb_str_new(buf, 1);
+        return rb_str_new((char *)buf, 1);
     }
     if (n < 65536) {
         buf[0] = '\xfc';
         buf[1] = n % 256;
         buf[2] = n / 256;
-        return rb_str_new(buf, 3);
+        return rb_str_new((char *)buf, 3);
     }
     if (n < 16777216) {
         buf[0] = '\xfd';
@@ -40,7 +39,7 @@ static VALUE packet_s_lcb(VALUE klass, VALUE val)
         n /= 256;
         buf[2] = n % 256;
         buf[3] = n / 256;
-        return rb_str_new(buf, 4);
+        return rb_str_new((char *)buf, 4);
     }
     buf[0] = '\xfe';
 #ifdef WORDS_BIGENDIAN
@@ -50,7 +49,7 @@ static VALUE packet_s_lcb(VALUE klass, VALUE val)
 #else
     memcpy(&buf[1], (char *)&n, 8);
 #endif
-    return rb_str_new(buf, 9);
+    return rb_str_new((char *)buf, 9);
 }
 
 static VALUE packet_s_lcs(VALUE klass, VALUE val)
@@ -75,8 +74,9 @@ static VALUE packet_initialize(VALUE obj, VALUE buf)
 
     Data_Get_Struct(obj, packet_data_t, data);
     rb_ivar_set(obj, rb_intern("buf"), buf);
-    data->ptr = RSTRING_PTR(buf);
+    data->ptr = (unsigned char *)RSTRING_PTR(buf);
     data->endp = data->ptr + RSTRING_LEN(buf);
+    return Qnil;
 }
 
 #define NIL_VALUE 0xFFFFFFFFFFFFFFFF
@@ -120,7 +120,6 @@ static unsigned long long _packet_lcb(packet_data_t *data)
 static VALUE packet_lcb(VALUE obj)
 {
     packet_data_t *data;
-    unsigned char v;
     unsigned long long n;
 
     Data_Get_Struct(obj, packet_data_t, data);
@@ -140,7 +139,7 @@ static VALUE _packet_lcs(packet_data_t *data)
         return Qnil;
     if (data->ptr+l > data->endp)
         l = data->endp - data->ptr;
-    ret = rb_str_new(data->ptr, l);
+    ret = rb_str_new((char *)data->ptr, l);
     data->ptr += l;
     return ret;
 }
@@ -148,8 +147,6 @@ static VALUE _packet_lcs(packet_data_t *data)
 static VALUE packet_lcs(VALUE obj)
 {
     packet_data_t *data;
-    unsigned long long l;
-    VALUE ret;
 
     Data_Get_Struct(obj, packet_data_t, data);
     return _packet_lcs(data);
@@ -164,7 +161,7 @@ static VALUE packet_read(VALUE obj, VALUE len)
     Data_Get_Struct(obj, packet_data_t, data);
     if (data->ptr+l > data->endp)
         l = data->endp - data->ptr;
-    ret = rb_str_new(data->ptr, l);
+    ret = rb_str_new((char *)data->ptr, l);
     data->ptr += l;
     return ret;
 }
@@ -179,7 +176,7 @@ static VALUE packet_string(VALUE obj)
     p = data->ptr;
     while (p < data->endp && *p++ != '\0')
         ;
-    ret = rb_str_new(data->ptr, (p - data->ptr)-1);
+    ret = rb_str_new((char *)data->ptr, (p - data->ptr)-1);
     data->ptr = p;
     return ret;
 }
@@ -232,7 +229,7 @@ static VALUE packet_to_s(VALUE obj)
     packet_data_t *data;
 
     Data_Get_Struct(obj, packet_data_t, data);
-    return rb_str_new(data->ptr, data->endp-data->ptr);
+    return rb_str_new((char *)data->ptr, data->endp-data->ptr);
 }
 
 enum {
@@ -357,7 +354,7 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         h += d * 24;
         return rb_funcall(cMysqlTime, rb_intern("new"), 8, ULONG2NUM(0), ULONG2NUM(0), ULONG2NUM(0), ULONG2NUM(h), ULONG2NUM(mi), ULONG2NUM(s), (sign != 0 ? Qtrue : Qfalse), ULONG2NUM(bs));
     default:
-        rb_raise(rb_eRuntimeError, "%s", "not implemented: type=#{%d}", type);
+        rb_raise(rb_eRuntimeError, "not implemented: type=#{%d}", type);
     }
 }
 
@@ -466,7 +463,7 @@ static VALUE _protocol_value2net(VALUE obj, VALUE netval, VALUE types)
         buf[5] = hour;
         buf[6] = min;
         buf[7] = sec;
-        ptr = buf;
+        ptr = (char *)buf;
         len = 8;
     } else {
         rb_raise(eProtocolError, "class %s is not supported", rb_class2name(rb_obj_class(obj)));
@@ -474,13 +471,12 @@ static VALUE _protocol_value2net(VALUE obj, VALUE netval, VALUE types)
     rb_str_cat(netval, ptr, len);
     buf[0] = type % 256;
     buf[1] = type / 256;
-    rb_str_cat(types, buf, 2);
+    rb_str_cat(types, (char *)buf, 2);
     return Qnil;
 }
 
 VALUE raw_record_to_a(VALUE obj)
 {
-    VALUE packet;
     VALUE ary;
     VALUE fields;
     packet_data_t *data;
@@ -518,7 +514,7 @@ VALUE stmt_raw_record_parse_record_packet(VALUE obj)
     packet_data_t *data;
     int nfields;
     int bitmap_length;
-    char *bitmap;
+    unsigned char *bitmap;
     int i;
     VALUE rec;
 
@@ -576,7 +572,7 @@ VALUE execute_packet_serialize(VALUE obj, VALUE stmt_id, VALUE cursor_type, VALU
     buf[7] = 0;
     buf[8] = 0;
     buf[9] = 0;
-    ret = rb_str_new(buf, 10);
+    ret = rb_str_new((char *)buf, 10);
 
     if (len == 0) {
         return rb_str_cat(ret, "\x01", 1);
