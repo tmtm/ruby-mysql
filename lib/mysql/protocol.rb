@@ -502,7 +502,7 @@ class Mysql
           raise EOFError unless ret && ret.length == len
         end
       rescue EOFError
-        raise ClientError::ServerGoneError, 'The MySQL server has gone away'
+        raise ClientError::ServerGoneError, 'MySQL server has gone away'
       rescue Timeout::Error
         raise ClientError, "read timeout"
       end while len == MAX_PACKET_LENGTH
@@ -550,7 +550,7 @@ class Mysql
           @sock.flush
         end
       rescue Errno::EPIPE
-        raise ClientError::ServerGoneError, 'The MySQL server has gone away'
+        raise ClientError::ServerGoneError, 'MySQL server has gone away'
       rescue Timeout::Error
         raise ClientError, "write timeout"
       end
