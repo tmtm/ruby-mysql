@@ -482,6 +482,7 @@ VALUE raw_record_to_a(VALUE obj)
 {
     VALUE packet;
     VALUE ary;
+    VALUE fields;
     packet_data_t *data;
     int nfields;
     int i;
@@ -489,15 +490,20 @@ VALUE raw_record_to_a(VALUE obj)
     VALUE encoding;
 
     Data_Get_Struct(rb_iv_get(obj, "@packet"), packet_data_t, data);
-    nfields = FIX2INT(rb_iv_get(obj, "@nfields"));
+    fields = rb_iv_get(obj, "@fields");
+    nfields = RARRAY_LEN(fields);
     ary = rb_ary_new2(nfields);
     encoding = rb_iv_get(obj, "@encoding");
     for (i = 0; i < nfields; i++) {
         str = _packet_lcs(data);
 #ifdef HAVE_RUBY_ENCODING_H
         if (str != Qnil) {
-            str = rb_funcall(str, rb_intern("force_encoding"), 1, encoding);
-            str = rb_funcall(str, rb_intern("encode"), 0);
+            VALUE f = RARRAY_PTR(fields)[i];
+            if (FIX2INT(rb_iv_get(f, "@type")) != 16 &&      /* TYPE_BIT */
+                FIX2INT(rb_iv_get(f, "@charsetnr")) != 63) { /* BINARY charset */
+                str = rb_funcall(str, rb_intern("force_encoding"), 1, encoding);
+                str = rb_funcall(str, rb_intern("encode"), 0);
+            }
         }
 #endif
         rb_ary_push(ary, str);
