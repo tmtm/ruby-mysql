@@ -25,6 +25,8 @@ class Mysql
       case type
       when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB
         return pkt.lcs
+      when Field::TYPE_MEDIUM_BLOB
+        return pkt.lcs
       when Field::TYPE_TINY
         v = pkt.utiny
         return unsigned ? v : v < 128 ? v : v-256
