@@ -118,9 +118,12 @@ class Mysql
       when String
         type = Field::TYPE_STRING
         val = Packet.lcs(v)
-      when Mysql::Time, ::Time
+      when ::Time
         type = Field::TYPE_DATETIME
         val = [7, v.year, v.month, v.day, v.hour, v.min, v.sec].pack("CvCCCCC")
+      when Mysql::Time, ::Time
+        type = Field::TYPE_DATETIME
+        val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, v.second_part].pack("CvCCCCCV")
       else
         raise ProtocolError, "class #{v.class} is not supported"
       end
