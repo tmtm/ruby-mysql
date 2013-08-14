@@ -31,6 +31,14 @@ MySQL connector for Ruby.
  stmt = my.prepare('insert into tblname (col1,col2) values (?,?)')
  stmt.execute 123, 'abc'
 
+== Use with {Celluloid::IO}[https://github.com/celluloid/celluloid-io]
+
+You just need to override Mysql default socket classes with
+Celluloid's ones. Then use it as you normally do.
+
+ Mysql.unixsocket_class = Celluloid::IO::UNIXSocket
+ Mysql.tcpsocket_class = Celluloid::IO::TCPSocket
+
 == Incompatible with MySQL/Ruby 2.8.x
 
 * Ruby 1.8.x ではシフトJISのような安全でないマルチバイト文字セットに対して Mysql#escape_string を使用すると例外が発生します。
