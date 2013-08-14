@@ -26,12 +26,12 @@ class Mysql
   # with amazing Celluloid::IO (https://github.com/celluloid/celluloid-io)
   #
   @@tcpsocket_class = TCPSocket
-  def tcpsocket_class; @@tcpsocket_class end
-  def tcpsocket_class=(value); @@tcpsocket_class = value end
+  def self.tcpsocket_class; @@tcpsocket_class end
+  def self.tcpsocket_class=(value); @@tcpsocket_class = value end
 
   @@unixsocket_class = UNIXSocket
-  def unixsocket_class; @@unixsocket_class end
-  def unixsocket_class=(value); @@unixsocket_class = value end
+  def self.unixsocket_class; @@unixsocket_class end
+  def self.unixsocket_class=(value); @@unixsocket_class = value end
   #
   ##
 
