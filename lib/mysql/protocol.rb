@@ -168,10 +168,10 @@ class Mysql
         Timeout.timeout conn_timeout do
           if host.nil? or host.empty? or host == "localhost"
             socket ||= ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
-            @sock = UNIXSocket.new socket
+            @sock = Mysql.unixsocket_class.new socket
           else
             port ||= ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql","tcp") rescue MYSQL_TCP_PORT)
-            @sock = TCPSocket.new host, port
+            @sock = Mysql.tcpsocket_class.new host, port
           end
         end
       rescue Timeout::Error
