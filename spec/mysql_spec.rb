@@ -130,8 +130,8 @@ describe 'Mysql#options' do
   end
   it 'OPT_CONNECT_TIMEOUT: set timeout for connecting' do
     @m.options(Mysql::OPT_CONNECT_TIMEOUT, 0.1).should == @m
-    UNIXSocket.stub!(:new).and_return{sleep 1}
-    TCPSocket.stub!(:new).and_return{sleep 1}
+    UNIXSocket.stub(:new).and_return{sleep 1}
+    TCPSocket.stub(:new).and_return{sleep 1}
     proc{@m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)}.should raise_error Mysql::ClientError, 'connection timeout'
     proc{@m.connect}.should raise_error Mysql::ClientError, 'connection timeout'
   end
