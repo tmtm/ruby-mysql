@@ -491,7 +491,7 @@ class Mysql
     # === Exception
     # [ProtocolError] invalid packet sequence number
     def read
-      ret = ""
+      data = ''
       len = nil
       begin
         Timeout.timeout @read_timeout do
@@ -503,6 +503,7 @@ class Mysql
           @seq = (@seq + 1) % 256
           ret = @sock.read(len)
           raise EOFError unless ret && ret.length == len
+          data.concat ret
         end
       rescue EOFError
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
@@ -513,10 +514,10 @@ class Mysql
       @sqlstate = "00000"
 
       # Error packet
-      if ret[0] == ?\xff
-        f, errno, marker, @sqlstate, message = ret.unpack("Cvaa5a*")
+      if data[0] == ?\xff
+        f, errno, marker, @sqlstate, message = data.unpack("Cvaa5a*")
         unless marker == "#"
-          f, errno, message = ret.unpack("Cva*")    # Version 4.0 Error
+          f, errno, message = data.unpack("Cva*")    # Version 4.0 Error
           @sqlstate = ""
         end
         message.force_encoding(@charset.encoding)
@@ -525,7 +526,7 @@ class Mysql
         end
         raise Mysql::ServerError.new(message, @sqlstate)
       end
-      Packet.new(ret)
+      Packet.new(data)
     end
 
     # Write one packet data

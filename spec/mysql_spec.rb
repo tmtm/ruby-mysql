@@ -1442,66 +1442,66 @@ describe 'Mysql::Stmt' do
 
   it '#fetch tinyblob column' do
     @m.query 'create temporary table t (i tinyblob)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*255}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ["a"*255]]
   end
 
   it '#fetch tinytext column' do
     @m.query 'create temporary table t (i tinytext)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*255}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ["a"*255]]
   end
 
   it '#fetch blob column' do
     @m.query 'create temporary table t (i blob)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*65535}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ["a"*65535]]
   end
 
   it '#fetch text column' do
     @m.query 'create temporary table t (i text)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*65535}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ["a"*65535]]
   end
 
   it '#fetch mediumblob column' do
     @m.query 'create temporary table t (i mediumblob)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*16777215}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ['a'*16777215]]
   end
 
   it '#fetch mediumtext column' do
     @m.query 'create temporary table t (i mediumtext)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*16777215}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ['a'*16777215]]
   end
 
   it '#fetch longblob column' do
     @m.query 'create temporary table t (i longblob)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*16777216}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ["a"*16777216]]
   end
 
   it '#fetch longtext column' do
     @m.query 'create temporary table t (i longtext)'
-    @m.query "insert into t values (null),('abc')"
+    @m.query "insert into t values (null),('#{"a"*16777216}')"
     @s.prepare 'select i from t'
     @s.execute
-    @s.entries.should == [[nil], ["abc"]]
+    @s.entries.should == [[nil], ["a"*16777216]]
   end
 
   it '#fetch enum column' do
