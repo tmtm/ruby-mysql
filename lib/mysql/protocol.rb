@@ -33,11 +33,11 @@ class Mysql
         return unsigned ? v : v < 32768 ? v : v-65536
       when Field::TYPE_INT24, Field::TYPE_LONG
         v = pkt.ulong
-        return unsigned ? v : v < 2**32/2 ? v : v-2**32
+        return unsigned ? v : v < 0x8000_0000 ? v : v-0x10000_0000
       when Field::TYPE_LONGLONG
         n1, n2 = pkt.ulong, pkt.ulong
         v = (n2 << 32) | n1
-        return unsigned ? v : v < 2**64/2 ? v : v-2**64
+        return unsigned ? v : v < 0x8000_0000_0000_0000 ? v : v-0x10000_0000_0000_0000
       when Field::TYPE_FLOAT
         return pkt.read(4).unpack('e').first
       when Field::TYPE_DOUBLE
@@ -79,38 +79,17 @@ class Mysql
         type = Field::TYPE_NULL
         val = ""
       when Integer
-        if v >= 0
-          if v < 256
-            type = Field::TYPE_TINY | 0x8000
-            val = [v].pack("C")
-          elsif v < 256**2
-            type = Field::TYPE_SHORT | 0x8000
-            val = [v].pack("v")
-          elsif v < 256**4
-            type = Field::TYPE_LONG | 0x8000
-            val = [v].pack("V")
-          elsif v < 256**8
-            type = Field::TYPE_LONGLONG | 0x8000
-            val = [v&0xffffffff, v>>32].pack("VV")
-          else
-            raise ProtocolError, "value too large: #{v}"
-          end
+        if -0x8000_0000 <= v && v < 0x8000_0000
+          type = Field::TYPE_LONG
+          val = [v].pack('V')
+        elsif -0x8000_0000_0000_0000 <= v && v < 0x8000_0000_0000_0000
+          type = Field::TYPE_LONGLONG
+          val = [v&0xffffffff, v>>32].pack("VV")
+        elsif 0x8000_0000_0000_0000 <= v && v <= 0xffff_ffff_ffff_ffff
+          type = Field::TYPE_LONGLONG | 0x8000
+          val = [v&0xffffffff, v>>32].pack("VV")
         else
-          if -v <= 256/2
-            type = Field::TYPE_TINY
-            val = [v].pack("C")
-          elsif -v <= 256**2/2
-            type = Field::TYPE_SHORT
-            val = [v].pack("v")
-          elsif -v <= 256**4/2
-            type = Field::TYPE_LONG
-            val = [v].pack("V")
-          elsif -v <= 256**8/2
-            type = Field::TYPE_LONGLONG
-            val = [v&0xffffffff, v>>32].pack("VV")
-          else
-            raise ProtocolError, "value too large: #{v}"
-          end
+          raise ProtocolError, "value too large: #{v}"
         end
       when Float
         type = Field::TYPE_DOUBLE
