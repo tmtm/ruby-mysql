@@ -1,4 +1,6 @@
 # coding: binary
+require 'mysql/packet'
+
 describe Mysql::Packet do
   def self._(s)
     s.unpack('H*').first
