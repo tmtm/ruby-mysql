@@ -120,8 +120,8 @@ class Mysql
         val = Packet.lcs(v)
       when ::Time
         type = Field::TYPE_DATETIME
-        val = [7, v.year, v.month, v.day, v.hour, v.min, v.sec].pack("CvCCCCC")
-      when Mysql::Time, ::Time
+        val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, v.usec].pack("CvCCCCCV")
+      when Mysql::Time
         type = Field::TYPE_DATETIME
         val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, v.second_part].pack("CvCCCCCV")
       else
