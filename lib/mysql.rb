@@ -109,7 +109,7 @@ class Mysql
   # @return self
   def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=0)
     if flag & CLIENT_COMPRESS != 0
-      warn 'unsupported flag: CLIENT_COMPRESS'
+      warn 'unsupported flag: CLIENT_COMPRESS' if $VERBOSE
       flag &= ~CLIENT_COMPRESS
     end
     @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
@@ -179,7 +179,7 @@ class Mysql
       @charset = Charset.by_name value.to_s
 #    when Mysql::SHARED_MEMORY_BASE_NAME
     else
-      warn "option not implemented: #{opt}"
+      warn "option not implemented: #{opt}" if $VERBOSE
     end
     self
   end
