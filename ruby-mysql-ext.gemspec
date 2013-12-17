@@ -1,9 +1,9 @@
 Gem::Specification.new do |s|
   s.name = 'ruby-mysql-ext'
-  s.version = '2.9.11'
+  s.version = '2.9.12'
   s.summary = 'MySQL connector with extension'
   s.authors = ['Tomita Masahiro']
-  s.date = '2013-04-09'
+  s.date = '2013-12-17'
   s.description = 'This is MySQL connector with C extension.'
   s.email = 'tommy@tmtm.org'
   s.extensions = ['ext/mysql/extconf.rb']
