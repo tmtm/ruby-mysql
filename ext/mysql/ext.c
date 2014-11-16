@@ -267,7 +267,7 @@ enum {
 
 static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
 {
-    unsigned long n;
+    unsigned int n;
     unsigned long long ll;
     float f;
     double fd;
@@ -297,7 +297,7 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         n |= *data->ptr++ * 0x100;
         n |= *data->ptr++ * 0x10000;
         n |= *data->ptr++ * 0x1000000;
-        return uflag ? UINT2NUM(n) : INT2NUM((long)n);
+        return uflag ? UINT2NUM(n) : INT2NUM((int)n);
     case TYPE_LONGLONG:
         n = *data->ptr++;
         n |= *data->ptr++ * 0x100;
