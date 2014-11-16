@@ -1,0 +1,17 @@
+GEM
+  remote: http://rubygems.org/
+  specs:
+    power_assert (0.2.0)
+    rr (1.1.2)
+    test-unit (3.0.7)
+      power_assert
+    test-unit-rr (1.0.3)
+      rr (>= 1.1.1)
+      test-unit (>= 2.5.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  test-unit
+  test-unit-rr
