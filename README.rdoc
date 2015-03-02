@@ -31,6 +31,10 @@ MySQL connector for Ruby.
  stmt = my.prepare('insert into tblname (col1,col2) values (?,?)')
  stmt.execute 123, 'abc'
 
+ res = local.prepare("insert into kk (description) values (?)")
+ res.execute 'ruby mysql test'
+ id = local.protocol.insert_id    # Auto-generated insert ID (<Fixnum>)
+
 == Incompatible with MySQL/Ruby 2.8.x
 
 * Ruby 1.8.x ではシフトJISのような安全でないマルチバイト文字セットに対して Mysql#escape_string を使用すると例外が発生します。
