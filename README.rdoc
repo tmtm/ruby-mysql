@@ -35,7 +35,7 @@ MySQL connector for Ruby.
 
  stmt = my.prepare("insert into kk (description) values (?)")
  stmt.execute 'ruby mysql test'
- id = stmt.protocol.insert_id    # Auto-generated insert ID (<Fixnum>)
+ id = my.protocol.insert_id    # Auto-generated insert ID (<Fixnum>)
 
 == Incompatible with MySQL/Ruby 2.8.x
 
