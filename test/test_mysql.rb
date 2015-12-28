@@ -707,7 +707,7 @@ class TestMysql < Test::Unit::TestCase
       assert{ f.def == nil }
       assert{ f.type == Mysql::Field::TYPE_LONG }
       assert{ f.length == 11 }
-      f.max_length == 1
+      assert{ f.max_length == 1 }
       assert{ f.flags == Mysql::Field::NUM_FLAG|Mysql::Field::PRI_KEY_FLAG|Mysql::Field::PART_KEY_FLAG|Mysql::Field::NOT_NULL_FLAG }
       assert{ f.decimals == 0 }
 
@@ -717,7 +717,7 @@ class TestMysql < Test::Unit::TestCase
       assert{ f.def == nil }
       assert{ f.type == Mysql::Field::TYPE_STRING }
       assert{ f.length == 10 }
-      f.max_length == 4
+      assert{ f.max_length == 4 }
       assert{ f.flags == 0 }
       assert{ f.decimals == 0 }
 

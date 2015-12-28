@@ -584,7 +584,7 @@ class Mysql
         server_capabilities = pkt.ushort
         server_charset = pkt.utiny
         server_status = pkt.ushort
-        f1 = pkt.read(13)
+        _f1 = pkt.read(13)
         rest_scramble_buff = pkt.string
         raise ProtocolError, "unsupported version: #{protocol_version}" unless protocol_version == VERSION
         raise ProtocolError, "invalid packet: f0=#{f0}" unless f0 == 0
@@ -627,13 +627,13 @@ class Mysql
     # Field packet
     class FieldPacket
       def self.parse(pkt)
-        first = pkt.lcs
+        _first = pkt.lcs
         db = pkt.lcs
         table = pkt.lcs
         org_table = pkt.lcs
         name = pkt.lcs
         org_name = pkt.lcs
-        f0 = pkt.utiny
+        _f0 = pkt.utiny
         charsetnr = pkt.ushort
         length = pkt.ulong
         type = pkt.utiny

@@ -731,8 +731,8 @@ class Mysql
       max_length = Array.new(@fields.size, 0)
       @records.each_with_index do |rec, i|
         rec = @records[i] = rec.to_a if rec.is_a? RawRecord
-        max_length.each_index do |i|
-          max_length[i] = rec[i].length if rec[i] && rec[i].length > max_length[i]
+        max_length.each_index do |j|
+          max_length[j] = rec[j].length if rec[j] && rec[j].length > max_length[j]
         end
       end
       max_length.each_with_index do |len, i|
