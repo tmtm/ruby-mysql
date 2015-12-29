@@ -537,6 +537,10 @@ class TestMysql < Test::Unit::TestCase
     end
 
     sub_test_case '#warning_count' do
+      setup do
+        @m.query("set sql_mode=''")
+        @m.query("set sql_mode=''")  # clear warnings on previous `set' statement.
+      end
       test 'default values is zero' do
         assert{ @m.warning_count == 0 }
       end
@@ -683,7 +687,7 @@ class TestMysql < Test::Unit::TestCase
     setup do
       @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.charset = 'latin1'
-      @m.query 'create temporary table t (id int, str char(10), primary key (id))'
+      @m.query 'create temporary table t (id int default 0, str char(10), primary key (id))'
       @m.query "insert into t values (1,'abc'),(2,'defg'),(3,'hi'),(4,null)"
       @res = @m.query 'select * from t'
     end
@@ -955,6 +959,7 @@ class TestMysql < Test::Unit::TestCase
   sub_test_case 'Mysql::Stmt' do
     setup do
       @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query("set sql_mode=''")
       @s = @m.stmt_init
     end
 
