@@ -1564,6 +1564,16 @@ class TestMysql < Test::Unit::TestCase
       assert{ @s.entries == [[nil], [''], ['abc'], ['def'], ['abc,def'], ['abc'], ['def'], ['abc,def'], ['']] }
     end
 
+    test '#fetch json column' do
+      if @m.server_version >= 50700
+        @m.query "create temporary table t (i json)"
+        @m.query "insert into t values ('123'),('{\"a\":1,\"b\":2,\"c\":3}'),('[1,2,3]')"
+        @s.prepare 'select i from t'
+        @s.execute
+        assert{ @s.entries == [['123'], ['{"a": 1, "b": 2, "c": 3}'], ['[1, 2, 3]']] }
+      end
+    end
+
     test '#field_count' do
       @s.prepare 'select 1,2,3'
       assert{ @s.field_count == 3 }

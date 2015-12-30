@@ -23,7 +23,7 @@ class Mysql
     # Object :: converted value.
     def self.net2value(pkt, type, unsigned)
       case type
-      when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB
+      when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB, Field::TYPE_JSON
         return pkt.lcs
       when Field::TYPE_TINY
         v = pkt.utiny
