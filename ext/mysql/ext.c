@@ -286,6 +286,7 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
     case TYPE_NEWDECIMAL:
     case TYPE_BLOB:
     case TYPE_BIT:
+    case TYPE_JSON:
         return _packet_lcs(data);
     case TYPE_TINY:
         n = *data->ptr++;
