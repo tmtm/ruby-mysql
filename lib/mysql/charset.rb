@@ -296,7 +296,7 @@ class Mysql
     if defined? Encoding
 
       # @private
-      # MySQL Charset -> Ruby's Encodeing
+      # MySQL Charset -> Ruby's Encoding
       CHARSET_ENCODING = {
         "armscii8" => nil,
         "ascii"    => Encoding::US_ASCII,
