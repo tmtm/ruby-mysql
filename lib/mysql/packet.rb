@@ -67,7 +67,8 @@ class Mysql
     end
 
     def eof?
-      @data[0] == ?\xfe && @data.length == 5
+      type, warnings, flags=@data.unpack("Cvv")
+      type == 0xfe && @data.length == 5
     end
 
     def to_s
