@@ -24,6 +24,7 @@ MySQL connector for Ruby.
 
 使用例:
 
+ require "mysql"
  my = Mysql.connect('hostname', 'username', 'password', 'dbname')
  my.query("select col1, col2 from tblname").each do |col1, col2|
    p col1, col2
