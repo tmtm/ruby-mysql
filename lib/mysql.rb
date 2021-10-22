@@ -1,5 +1,5 @@
 # coding: ascii-8bit
-# Copyright (C) 2008-2012 TOMITA Masahiro
+# Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 # MySQL connection class.
@@ -112,8 +112,8 @@ class Mysql
       warn 'unsupported flag: CLIENT_COMPRESS' if $VERBOSE
       flag &= ~CLIENT_COMPRESS
     end
-    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout
-    @protocol.authenticate user, passwd, db, (@local_infile ? CLIENT_LOCAL_FILES : 0) | flag, @charset
+    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout, @local_infile
+    @protocol.authenticate user, passwd, db, flag, @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
     query @init_command if @init_command
@@ -158,6 +158,8 @@ class Mysql
       @connect_timeout = value
 #    when Mysql::GUESS_CONNECTION
     when Mysql::OPT_LOCAL_INFILE
+      @local_infile = value ? '' : nil
+    when Mysql::OPT_LOAD_DATA_LOCAL_DIR
       @local_infile = value
 #    when Mysql::OPT_NAMED_PIPE
 #    when Mysql::OPT_PROTOCOL

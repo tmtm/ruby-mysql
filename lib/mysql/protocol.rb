@@ -1,5 +1,5 @@
 # coding: ascii-8bit
-# Copyright (C) 2008-2012 TOMITA Masahiro
+# Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 require "socket"
@@ -134,15 +134,17 @@ class Mysql
     # conn_timeout :: [Integer] connect timeout (sec).
     # read_timeout :: [Integer] read timeout (sec).
     # write_timeout :: [Integer] write timeout (sec).
+    # local_infile :: [String] local infile path
     # === Exception
     # [ClientError] :: connection timeout
-    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout)
+    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout, local_infile)
       @insert_id = 0
       @warning_count = 0
       @gc_stmt_queue = []   # stmt id list which GC destroy.
       set_state :INIT
       @read_timeout = read_timeout
       @write_timeout = write_timeout
+      @local_infile = local_infile
       begin
         Timeout.timeout conn_timeout do
           if host.nil? or host.empty? or host == "localhost"
@@ -180,6 +182,7 @@ class Mysql
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
       @thread_id = init_packet.thread_id
       client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
+      client_flags |= CLIENT_LOCAL_FILES if @local_infile
       client_flags |= CLIENT_CONNECT_WITH_DB if db
       client_flags |= flag
       @charset = charset
@@ -230,10 +233,7 @@ class Mysql
           return res_packet.field_count
         end
         if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
-          filename = res_packet.message
-          File.open(filename){|f| write f}
-          write nil  # EOF mark
-          read
+          send_local_file(res_packet.message)
         end
         @affected_rows, @insert_id, @server_status, @warning_count, @message =
           res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
@@ -243,6 +243,19 @@ class Mysql
         set_state :READY
         raise
       end
+    end
+
+    # send local file to server
+    def send_local_file(filename)
+      filename = File.absolute_path(filename)
+      if filename.start_with? @local_infile
+        File.open(filename){|f| write f}
+      else
+        raise ClientError::LoadDataLocalInfileRejected, 'LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.'
+      end
+    ensure
+      write nil # EOF mark
+      read
     end
 
     # Retrieve n fields

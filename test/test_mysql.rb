@@ -160,6 +160,40 @@ class TestMysql < Test::Unit::TestCase
       @m.query("load data local infile '#{tmpf.path}' into table t")
       assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
     end
+    test 'OPT_LOAD_DATA_LOCAL_DIR: client can execute LOAD DATA LOCAL INFILE query with specified directory' do
+      require 'tempfile'
+      tmpf = Tempfile.new 'mysql_spec'
+      tmpf.puts "123\tabc\n"
+      tmpf.close
+      assert{ @m.options(Mysql::OPT_LOAD_DATA_LOCAL_DIR, File.dirname(tmpf.path)) == @m }
+      @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query('create temporary table t (i int, c char(10))')
+      @m.query("load data local infile '#{tmpf.path}' into table t")
+      assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
+    end
+    test 'OPT_LOAD_DATA_LOCAL_DIR: client cannot execute LOAD DATA LOCAL INFILE query without specified directory' do
+      require 'tempfile'
+      tmpf = Tempfile.new 'mysql_spec'
+      tmpf.puts "123\tabc\n"
+      tmpf.close
+      assert{ @m.options(Mysql::OPT_LOAD_DATA_LOCAL_DIR, '/hoge') == @m }
+      @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query('create temporary table t (i int, c char(10))')
+      assert_raise Mysql::ClientError::LoadDataLocalInfileRejected, 'LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.' do
+        @m.query("load data local infile '#{tmpf.path}' into table t")
+      end
+    end
+    test 'without OPT_LOCAL_INFILE and OPT_LOAD_DATA_LOCAL_DIR: client cannot execute LOAD DATA LOCAL INFILE query' do
+      require 'tempfile'
+      tmpf = Tempfile.new 'mysql_spec'
+      tmpf.puts "123\tabc\n"
+      tmpf.close
+      @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query('create temporary table t (i int, c char(10))')
+      assert_raise Mysql::ServerError::NotAllowedCommand, 'The used command is not allowed with this MySQL version' do
+        @m.query("load data local infile '#{tmpf.path}' into table t")
+      end
+    end
     test 'OPT_READ_TIMEOUT: set timeout for reading packet' do
       assert{ @m.options(Mysql::OPT_READ_TIMEOUT, 10) == @m }
     end
