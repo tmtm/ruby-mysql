@@ -1,5 +1,5 @@
 # coding: ascii-8bit
-# Copyright (C) 2003-2008 TOMITA Masahiro
+# Copyright (C) 2003 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
 class Mysql
@@ -36,6 +36,7 @@ class Mysql
   COM_DAEMON              = 29
   COM_BINLOG_DUMP_GTID    = 30
   COM_RESET_CONNECTION    = 31
+  COM_CLONE               = 32
 
   # Client flag
   CLIENT_LONG_PASSWORD                  = 1         # new more secure passwords
@@ -63,32 +64,57 @@ class Mysql
   CLIENT_CAN_HANDLE_EXPIRED_PASSWORDS   = 1 << 22   # Don't close the connection for a connection with expired password.
   CLIENT_SESSION_TRACK                  = 1 << 23   # Capable of handling server state change information. Its a hint to the server to include the state change information in Ok packet.
   CLIENT_DEPRECATE_EOF                  = 1 << 24   # Client no longer needs EOF packet
-  CLIENT_SSL_VERIFY_SERVER_CERT         = 1 << 30
-  CLIENT_REMEMBER_OPTIONS               = 1 << 31
+  CLIENT_OPTIONAL_RESULTSET_METADATA    = 1 << 25   # The client can handle optional metadata information in the resultset.
+  CLIENT_ZSTD_COMPRESSION_ALGORITHM     = 1 << 26   # Compression protocol extended to support zstd compression method
+  CLIENT_CAPABILITY_EXTENSION           = 1 << 29   # This flag will be reserved to extend the 32bit capabilities structure to 64bits.
+  CLIENT_SSL_VERIFY_SERVER_CERT         = 1 << 30   # Verify server certificate.
+  CLIENT_REMEMBER_OPTIONS               = 1 << 31   # Don't reset the options after an unsuccessful connect
 
   # Connection Option
-  OPT_CONNECT_TIMEOUT         = 0
-  OPT_COMPRESS                = 1
-  OPT_NAMED_PIPE              = 2
-  INIT_COMMAND                = 3
-  READ_DEFAULT_FILE           = 4
-  READ_DEFAULT_GROUP          = 5
-  SET_CHARSET_DIR             = 6
-  SET_CHARSET_NAME            = 7
-  OPT_LOCAL_INFILE            = 8
-  OPT_PROTOCOL                = 9
-  SHARED_MEMORY_BASE_NAME     = 10
-  OPT_READ_TIMEOUT            = 11
-  OPT_WRITE_TIMEOUT           = 12
-  OPT_USE_RESULT              = 13
-  OPT_USE_REMOTE_CONNECTION   = 14
-  OPT_USE_EMBEDDED_CONNECTION = 15
-  OPT_GUESS_CONNECTION        = 16
-  SET_CLIENT_IP               = 17
-  SECURE_AUTH                 = 18
-  REPORT_DATA_TRUNCATION      = 19
-  OPT_RECONNECT               = 20
-  OPT_SSL_VERIFY_SERVER_CERT  = 21
+  OPT_CONNECT_TIMEOUT              = 0
+  OPT_COMPRESS                     = 1
+  OPT_NAMED_PIPE                   = 2
+  INIT_COMMAND                     = 3
+  READ_DEFAULT_FILE                = 4
+  READ_DEFAULT_GROUP               = 5
+  SET_CHARSET_DIR                  = 6
+  SET_CHARSET_NAME                 = 7
+  OPT_LOCAL_INFILE                 = 8
+  OPT_PROTOCOL                     = 9
+  SHARED_MEMORY_BASE_NAME          = 10
+  OPT_READ_TIMEOUT                 = 11
+  OPT_WRITE_TIMEOUT                = 12
+  OPT_USE_RESULT                   = 13
+  REPORT_DATA_TRUNCATION           = 14
+  OPT_RECONNECT                    = 15
+  PLUGIN_DIR                       = 16
+  DEFAULT_AUTH                     = 17
+  OPT_BIND                         = 18
+  OPT_SSL_KEY                      = 19
+  OPT_SSL_CERT                     = 20
+  OPT_SSL_CA                       = 21
+  OPT_SSL_CAPATH                   = 22
+  OPT_SSL_CIPHER                   = 23
+  OPT_SSL_CRL                      = 24
+  OPT_SSL_CRLPATH                  = 25
+  OPT_CONNECT_ATTR_RESET           = 26
+  OPT_CONNECT_ATTR_ADD             = 27
+  OPT_CONNECT_ATTR_DELETE          = 28
+  SERVER_PUBLIC_KEY                = 29
+  ENABLE_CLEARTEXT_PLUGIN          = 30
+  OPT_CAN_HANDLE_EXPIRED_PASSWORDS = 31
+  OPT_MAX_ALLOWED_PACKET           = 32
+  OPT_NET_BUFFER_LENGTH            = 33
+  OPT_TLS_VERSION                  = 34
+  OPT_SSL_MODE                     = 35
+  OPT_GET_SERVER_PUBLIC_KEY        = 36
+  OPT_RETRY_COUNT                  = 37
+  OPT_OPTIONAL_RESULTSET_METADATA  = 38
+  OPT_SSL_FIPS_MODE                = 39
+  OPT_TLS_CIPHERSUITES             = 40
+  OPT_COMPRESSION_ALGORITHMS       = 41
+  OPT_ZSTD_COMPRESSION_LEVEL       = 42
+  OPT_LOAD_DATA_LOCAL_DIR          = 43
 
   # Server Option
   OPTION_MULTI_STATEMENTS_ON  = 0
@@ -133,6 +159,7 @@ class Mysql
   REFRESH_USER_RESOURCES   = 1 << 19
   REFRESH_FOR_EXPORT       = 1 << 20
   REFRESH_OPTIMIZER_COSTS  = 1 << 21
+  REFRESH_PERSIST          = 1 << 22
 
   class Field
     # Field type
@@ -156,6 +183,9 @@ class Mysql
     TYPE_TIMESTAMP2  = 17
     TYPE_DATETIME2   = 18
     TYPE_TIME2       = 19
+    TYPE_TYPED_ARRAY = 20
+    TYPE_INVALID     = 243
+    TYPE_BOOL        = 244
     TYPE_JSON        = 245
     TYPE_NEWDECIMAL  = 246
     TYPE_ENUM        = 247
@@ -171,25 +201,35 @@ class Mysql
     TYPE_INTERVAL    = TYPE_ENUM
 
     # Flag
-    NOT_NULL_FLAG         = 1
-    PRI_KEY_FLAG          = 2
-    UNIQUE_KEY_FLAG       = 4
-    MULTIPLE_KEY_FLAG     = 8
-    BLOB_FLAG             = 16
-    UNSIGNED_FLAG         = 32
-    ZEROFILL_FLAG         = 64
-    BINARY_FLAG           = 128
-    ENUM_FLAG             = 256
-    AUTO_INCREMENT_FLAG   = 512
-    TIMESTAMP_FLAG        = 1024
-    SET_FLAG              = 2048
-    NO_DEFAULT_VALUE_FLAG = 4096
-    ON_UPDATE_NOW_FLAG    = 8192
-    NUM_FLAG              = 32768
-    PART_KEY_FLAG         = 16384
-    GROUP_FLAG            = 32768
-    UNIQUE_FLAG           = 65536
-    BINCMP_FLAG           = 131072
+    NOT_NULL_FLAG                  = 1
+    PRI_KEY_FLAG                   = 2
+    UNIQUE_KEY_FLAG                = 4
+    MULTIPLE_KEY_FLAG              = 8
+    BLOB_FLAG                      = 16
+    UNSIGNED_FLAG                  = 32
+    ZEROFILL_FLAG                  = 64
+    BINARY_FLAG                    = 128
+    ENUM_FLAG                      = 256
+    AUTO_INCREMENT_FLAG            = 512
+    TIMESTAMP_FLAG                 = 1024
+    SET_FLAG                       = 2048
+    NO_DEFAULT_VALUE_FLAG          = 4096
+    ON_UPDATE_NOW_FLAG             = 8192
+    NUM_FLAG                       = 32768
+    PART_KEY_FLAG                  = 16384
+    GROUP_FLAG                     = 32768
+    UNIQUE_FLAG                    = 65536
+    BINCMP_FLAG                    = 131072
+    GET_FIXED_FIELDS_FLAG          = 1 << 18
+    FIELD_IN_PART_FUNC_FLAG        = 1 << 19
+    FIELD_IN_ADD_INDEX             = 1 << 20
+    FIELD_IS_RENAMED               = 1 << 21
+    FIELD_FLAGS_STORAGE_MEDIA_MASK = 3 << 22
+    FIELD_FLAGS_COLUMN_FORMAT_MASK = 3 << 24
+    FIELD_IS_DROPPED               = 1 << 26
+    EXPLICIT_NULL_FLAG             = 1 << 27
+    FIELD_IS_MARKED                = 1 << 28
+    NOT_SECONDARY_FLAG             = 1 << 29
   end
 
   class Stmt

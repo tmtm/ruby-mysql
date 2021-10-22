@@ -977,7 +977,16 @@ class Mysql
     CR_AUTH_PLUGIN_CANNOT_LOAD               = 2059
     CR_DUPLICATE_CONNECTION_ATTR             = 2060
     CR_AUTH_PLUGIN_ERR                       = 2061
-    CR_ERROR_LAST                            = 2061
+    CR_INSECURE_API_ERR                      = 2062
+    CR_FILE_NAME_TOO_LONG                    = 2063
+    CR_SSL_FIPS_MODE_ERR                     = 2064
+    CR_DEPRECATED_COMPRESSION_NOT_SUPPORTED  = 2065
+    CR_COMPRESSION_WRONGLY_CONFIGURED        = 2066
+    CR_KERBEROS_USER_NOT_FOUND               = 2067
+    CR_LOAD_DATA_LOCAL_INFILE_REJECTED       = 2068
+    CR_LOAD_DATA_LOCAL_INFILE_REALPATH_FAIL  = 2069
+    CR_DNS_SRV_LOOKUP_FAILED                 = 2070
+    CR_ERROR_LAST                            = 2070
   end
 
   ClientError.define_error_class(/\ACR_/)
