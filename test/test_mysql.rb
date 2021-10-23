@@ -1803,13 +1803,19 @@ class TestMysql < Test::Unit::TestCase
       end
 
       teardown do
+        v =  $VERBOSE
+        $VERBOSE = false
         Encoding.default_internal = @default_internal
+        $VERBOSE = v
       end
 
       sub_test_case 'default_internal is CP932' do
         setup do
           @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
+          v =  $VERBOSE
+          $VERBOSE = false
           Encoding.default_internal = 'CP932'
+          $VERBOSE = v
         end
         test 'is converted to CP932' do
           assert @m.query('select "あいう"').fetch == ["\x82\xA0\x82\xA2\x82\xA4".force_encoding("CP932")]

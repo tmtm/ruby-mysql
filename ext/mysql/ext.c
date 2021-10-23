@@ -603,7 +603,7 @@ VALUE execute_packet_serialize(VALUE obj, VALUE stmt_id, VALUE cursor_type, VALU
 void Init_ext(void)
 {
     cMysql = rb_const_get(rb_cObject, rb_intern("Mysql"));
-    cPacket = rb_const_get(cMysql, rb_intern("Packet"));
+    cPacket = rb_define_class_under(cMysql, "Packet", rb_cObject);
     cMysqlTime = rb_define_class_under(cMysql, "Time", rb_cObject);
     cProtocol = rb_const_get(cMysql, rb_intern("Protocol"));
     cRawRecord = rb_const_get(cMysql, rb_intern("RawRecord"));
@@ -626,10 +626,14 @@ void Init_ext(void)
     rb_define_method(cPacket, "eof?", packet_eofQ, 0);
     rb_define_method(cPacket, "to_s", packet_to_s, 0);
 
+    rb_undef_method(cRawRecord, "to_a");
     rb_define_method(cRawRecord, "to_a", raw_record_to_a, 0);
 
+    rb_undef_method(cStmtRawRecord, "parse_record_packet");
+    rb_undef_method(cStmtRawRecord, "to_a");
     rb_define_method(cStmtRawRecord, "parse_record_packet", stmt_raw_record_parse_record_packet, 0);
     rb_define_alias(cStmtRawRecord, "to_a", "parse_record_packet");
 
+    rb_undef_method(rb_singleton_class(cExecutePacket), "serialize");
     rb_define_singleton_method(cExecutePacket, "serialize", execute_packet_serialize, 3);
 }
