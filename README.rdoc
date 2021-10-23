@@ -20,6 +20,8 @@ MySQL connector for Ruby.
 
 * MySQL/Ruby 2.8.x とほぼ互換があります。
 
+* MySQL 8.0 には対応していません。
+
 == Synopsis
 
 使用例:

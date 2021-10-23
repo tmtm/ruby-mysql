@@ -21,7 +21,7 @@ class Mysql
   rescue LoadError
   end
 
-  VERSION            = 20913               # Version number of this library
+  VERSION            = 21000               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
