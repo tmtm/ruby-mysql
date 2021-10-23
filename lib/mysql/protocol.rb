@@ -507,9 +507,9 @@ class Mysql
 
       # Error packet
       if data[0] == ?\xff
-        f, errno, marker, @sqlstate, message = data.unpack("Cvaa5a*")
+        _, errno, marker, @sqlstate, message = data.unpack("Cvaa5a*")
         unless marker == "#"
-          f, errno, message = data.unpack("Cva*")    # Version 4.0 Error
+          _, errno, message = data.unpack("Cva*")    # Version 4.0 Error
           @sqlstate = ""
         end
         message.force_encoding(@charset.encoding)
