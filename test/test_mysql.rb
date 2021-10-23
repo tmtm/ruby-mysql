@@ -1039,12 +1039,6 @@ class TestMysql < Test::Unit::TestCase
         assert{ @s.fetch == [123, 9, 1, 20091208100446] }
       end
 
-      test '(Fixnum) make result format to be Integer value' do
-        @s.bind_result Fixnum, Fixnum, Fixnum, Fixnum
-        @s.execute
-        assert{ @s.fetch == [123, 9, 1, 20091208100446] }
-      end
-
       test '(String) make result format to be String value' do
         @s.bind_result String, String, String, String
         @s.execute

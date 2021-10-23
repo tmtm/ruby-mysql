@@ -902,7 +902,7 @@ class Mysql
       row.zip(@bind_result).map do |col, type|
         if col.nil?
           nil
-        elsif [Numeric, Integer, Fixnum].include? type
+        elsif [Numeric, Integer].include? type
           col.to_i
         elsif type == String
           col.to_s
@@ -955,7 +955,7 @@ class Mysql
         raise ClientError, "bind_result: result value count(#{@fields.length}) != number of argument(#{args.length})"
       end
       args.each do |a|
-        raise TypeError unless [Numeric, Fixnum, Integer, Float, String, Mysql::Time, nil].include? a
+        raise TypeError unless [Numeric, Integer, Float, String, Mysql::Time, nil].include? a
       end
       @bind_result = args
       self
