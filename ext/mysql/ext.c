@@ -206,10 +206,10 @@ static VALUE packet_ulong(VALUE obj)
     unsigned long n;
 
     Data_Get_Struct(obj, packet_data_t, data);
-    n = *data->ptr++;
-    n |= *data->ptr++ * 0x100;
-    n |= *data->ptr++ * 0x10000;
-    n |= *data->ptr++ * 0x1000000;
+    n = (unsigned long)*data->ptr++;
+    n |= (unsigned long)*data->ptr++ * 0x100;
+    n |= (unsigned long)*data->ptr++ * 0x10000;
+    n |= (unsigned long)*data->ptr++ * 0x1000000;
     return UINT2NUM(n);
 }
 
@@ -298,20 +298,20 @@ static VALUE _protocol_net2value(packet_data_t *data, int type, int uflag)
         return uflag ? INT2FIX(n) : INT2FIX((short)n);
     case TYPE_INT24:
     case TYPE_LONG:
-        n = *data->ptr++;
-        n |= *data->ptr++ * 0x100;
-        n |= *data->ptr++ * 0x10000;
-        n |= *data->ptr++ * 0x1000000;
+        n = (unsigned long)*data->ptr++;
+        n |= (unsigned long)*data->ptr++ * 0x100;
+        n |= (unsigned long)*data->ptr++ * 0x10000;
+        n |= (unsigned long)*data->ptr++ * 0x1000000;
         return uflag ? UINT2NUM(n) : INT2NUM((int)n);
     case TYPE_LONGLONG:
-        n = *data->ptr++;
-        n |= *data->ptr++ * 0x100;
-        n |= *data->ptr++ * 0x10000;
-        n |= *data->ptr++ * 0x1000000;
-        ll = *data->ptr++;
-        ll |= *data->ptr++ * 0x100;
-        ll |= *data->ptr++ * 0x10000;
-        ll |= *data->ptr++ * 0x1000000;
+        n = (unsigned long)*data->ptr++;
+        n |= (unsigned long)*data->ptr++ * 0x100;
+        n |= (unsigned long)*data->ptr++ * 0x10000;
+        n |= (unsigned long)*data->ptr++ * 0x1000000;
+        ll = (unsigned long)*data->ptr++;
+        ll |= (unsigned long)*data->ptr++ * 0x100;
+        ll |= (unsigned long)*data->ptr++ * 0x10000;
+        ll |= (unsigned long)*data->ptr++ * 0x1000000;
         ll = (ll<<32) + n;
         return uflag ? ULL2NUM(ll) : LL2NUM((long long)(ll));
     case TYPE_FLOAT:
