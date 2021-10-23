@@ -692,7 +692,7 @@ class Mysql
         [
           client_flags,
           max_packet_size,
-          Packet.lcb(charset_number),
+          charset_number,
           "",                   # always 0x00 * 23
           username,
           Packet.lcs(scrambled_password),
