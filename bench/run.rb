@@ -35,7 +35,7 @@ create table bench_test (
 EOS
   t = Time.now.strftime('%Y%m%d%H%M%S')
   100.times do
-    m.query("insert into bench_test values (123,123,123456,123456,1234567,1234567,123456789,123456789,12345678900,12345678900,123.456,123.456,'abcdefghijklmnopqrstuvwxyz','abcdefghijklmnopqrstuvwxyz','#{t}','#{t}','#{t}')")
+    m.query("insert into bench_test values (123,123,12345,12345,1234567,1234567,123456789,123456789,12345678900,12345678900,123.456,123.456,'abcdefghijklmnopqrstuvwxyz','abcdefghijklmnopqrstuvwxyz','#{t}','#{t}','#{t}')")
   end
 end
 

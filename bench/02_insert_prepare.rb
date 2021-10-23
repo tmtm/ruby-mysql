@@ -24,5 +24,5 @@ EOF
 t = Time.now
 p = my.prepare('insert into test values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
 100000.times do
-  p.execute(123,123,123456,123456,1234567,1234567,123456789,123456789,12345678900,12345678900,123.456,123.456,'abcdefghijklmnopqrstuvwxyz','abcdefghijklmnopqrstuvwxyz',t,t,t)
+  p.execute(123,123,12345,12345,1234567,1234567,123456789,123456789,12345678900,12345678900,123.456,123.456,'abcdefghijklmnopqrstuvwxyz','abcdefghijklmnopqrstuvwxyz',t,t,t)
 end
