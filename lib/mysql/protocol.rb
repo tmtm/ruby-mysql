@@ -516,7 +516,7 @@ class Mysql
         if Mysql::ServerError::ERROR_MAP.key? errno
           raise Mysql::ServerError::ERROR_MAP[errno].new(message, @sqlstate)
         end
-        raise Mysql::ServerError.new(message, @sqlstate)
+        raise Mysql::ServerError.new(message, @sqlstate, errno)
       end
       Packet.new(data)
     end

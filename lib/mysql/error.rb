@@ -20,16 +20,13 @@ class Mysql
       end
     end
 
-    attr_reader :sqlstate, :error
+    attr_reader :sqlstate, :error, :errno
 
-    def initialize(message, sqlstate='HY000')
+    def initialize(message, sqlstate='HY000', errno=nil)
       @sqlstate = sqlstate
       @error = message
+      @errno = errno || self.class::ERRNO
       super message
-    end
-
-    def errno
-      self.class::ERRNO
     end
   end
 
