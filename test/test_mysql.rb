@@ -201,9 +201,12 @@ class TestMysql < Test::Unit::TestCase
       assert{ @m.options(Mysql::OPT_WRITE_TIMEOUT, 10) == @m }
     end
     test 'SET_CHARSET_NAME: set charset for connection' do
-      assert{ @m.options(Mysql::SET_CHARSET_NAME, 'utf8') == @m }
+      assert{ @m.options(Mysql::SET_CHARSET_NAME, 'utf8mb3') == @m }
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-      assert{ @m.query('select @@character_set_connection').fetch_row == ['utf8'] }
+      assert do
+        @m.query('select @@character_set_connection').fetch_row == ['utf8mb3'] ||
+          @m.query('select @@character_set_connection').fetch_row == ['utf8']
+      end
     end
   end
 
