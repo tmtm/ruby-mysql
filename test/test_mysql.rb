@@ -190,8 +190,14 @@ class TestMysql < Test::Unit::TestCase
       tmpf.close
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query('create temporary table t (i int, c char(10))')
-      assert_raise Mysql::ServerError::NotAllowedCommand, 'The used command is not allowed with this MySQL version' do
-        @m.query("load data local infile '#{tmpf.path}' into table t")
+      if @m.server_version >= 80000
+        assert_raise Mysql::ServerError, 'Loading local data is disabled; this must be enabled on both the client and server sides' do
+          @m.query("load data local infile '#{tmpf.path}' into table t")
+        end
+      else
+        assert_raise Mysql::ServerError::NotAllowedCommand, 'The used command is not allowed with this MySQL version' do
+          @m.query("load data local infile '#{tmpf.path}' into table t")
+        end
       end
     end
     test 'OPT_READ_TIMEOUT: set timeout for reading packet' do

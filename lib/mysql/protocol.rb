@@ -4,8 +4,8 @@
 
 require "socket"
 require "timeout"
-require "digest/sha1"
 require "stringio"
+require_relative 'authenticator.rb'
 
 class Mysql
   # MySQL network protocol
@@ -112,6 +112,7 @@ class Mysql
     attr_reader :server_info
     attr_reader :server_version
     attr_reader :thread_id
+    attr_reader :client_flags
     attr_reader :sqlstate
     attr_reader :affected_rows
     attr_reader :insert_id
@@ -181,18 +182,16 @@ class Mysql
       @server_info = init_packet.server_version
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
       @thread_id = init_packet.thread_id
-      client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION
-      client_flags |= CLIENT_LOCAL_FILES if @local_infile
-      client_flags |= CLIENT_CONNECT_WITH_DB if db
-      client_flags |= flag
+      @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_PLUGIN_AUTH
+      @client_flags |= CLIENT_LOCAL_FILES if @local_infile
+      @client_flags |= CLIENT_CONNECT_WITH_DB if db
+      @client_flags |= flag
       @charset = charset
       unless @charset
         @charset = Charset.by_number(init_packet.server_charset)
         @charset.encoding       # raise error if unsupported charset
       end
-      netpw = encrypt_password passwd, init_packet.scramble_buff
-      write AuthenticationPacket.serialize(client_flags, 1024**3, @charset.number, user, netpw, db)
-      raise ProtocolError, 'The old style password is not supported' if read.to_s == "\xfe"
+      Authenticator.new(self).authenticate(user, passwd, db, init_packet.scramble_buff, init_packet.auth_plugin)
       set_state :READY
     end
 
@@ -442,8 +441,6 @@ class Mysql
       @gc_stmt_queue.push stmt_id
     end
 
-    private
-
     def check_state(st)
       raise 'command out of sync' unless @state == st
     end
@@ -573,19 +570,6 @@ class Mysql
       end
     end
 
-    # Encrypt password
-    # === Argument
-    # plain    :: [String] plain password.
-    # scramble :: [String] scramble code from initial packet.
-    # === Return
-    # [String] encrypted password
-    def encrypt_password(plain, scramble)
-      return "" if plain.nil? or plain.empty?
-      hash_stage1 = Digest::SHA1.digest plain
-      hash_stage2 = Digest::SHA1.digest hash_stage1
-      return hash_stage1.unpack("C*").zip(Digest::SHA1.digest(scramble+hash_stage2).unpack("C*")).map{|a,b| a^b}.pack("C*")
-    end
-
     # Initial packet
     class InitialPacket
       def self.parse(pkt)
@@ -597,18 +581,26 @@ class Mysql
         server_capabilities = pkt.ushort
         server_charset = pkt.utiny
         server_status = pkt.ushort
-        _f1 = pkt.read(13)
+        server_capabilities2 = pkt.ushort
+        scramble_length = pkt.utiny
+        _f1 = pkt.read(10)
         rest_scramble_buff = pkt.string
+        auth_plugin = pkt.string
+
+        server_capabilities |= server_capabilities2 << 16
+        scramble_buff.concat rest_scramble_buff
+
         raise ProtocolError, "unsupported version: #{protocol_version}" unless protocol_version == VERSION
         raise ProtocolError, "invalid packet: f0=#{f0}" unless f0 == 0
-        scramble_buff.concat rest_scramble_buff
-        self.new protocol_version, server_version, thread_id, server_capabilities, server_charset, server_status, scramble_buff
+        raise ProtocolError, "invalid packet: scramble_length(#{scramble_length}) != length of scramble(#{scramble_buff.size + 1})" unless scramble_length == scramble_buff.size + 1
+
+        self.new protocol_version, server_version, thread_id, server_capabilities, server_charset, server_status, scramble_buff, auth_plugin
       end
 
-      attr_reader :protocol_version, :server_version, :thread_id, :server_capabilities, :server_charset, :server_status, :scramble_buff
+      attr_reader :protocol_version, :server_version, :thread_id, :server_capabilities, :server_charset, :server_status, :scramble_buff, :auth_plugin
 
       def initialize(*args)
-        @protocol_version, @server_version, @thread_id, @server_capabilities, @server_charset, @server_status, @scramble_buff = args
+        @protocol_version, @server_version, @thread_id, @server_capabilities, @server_charset, @server_status, @scramble_buff, @auth_plugin = args
       end
     end
 
@@ -688,16 +680,23 @@ class Mysql
 
     # Authentication packet
     class AuthenticationPacket
-      def self.serialize(client_flags, max_packet_size, charset_number, username, scrambled_password, databasename)
-        [
+      def self.serialize(client_flags, max_packet_size, charset_number, username, scrambled_password, databasename, auth_plugin)
+        data = [
           client_flags,
           max_packet_size,
           charset_number,
           "",                   # always 0x00 * 23
           username,
           Packet.lcs(scrambled_password),
-          databasename
-        ].pack("VVa*a23Z*A*Z*")
+        ]
+        pack = "VVCa23Z*A*"
+        if databasename
+          data.push databasename
+          pack.concat "Z*"
+        end
+        data.push auth_plugin
+        pack.concat "Z*"
+        data.pack(pack)
       end
     end
 
@@ -724,6 +723,21 @@ class Mysql
         return bitmap.pack("C*")
       end
 
+    end
+
+    class AuthenticationResultPacket
+      def self.parse(pkt)
+        result = pkt.utiny
+        auth_plugin = pkt.string
+        scramble = pkt.string
+        self.new(result, auth_plugin, scramble)
+      end
+
+      attr_reader :result, :auth_plugin, :scramble
+
+      def initialize(*args)
+        @result, @auth_plugin, @scramble = args
+      end
     end
   end
 
