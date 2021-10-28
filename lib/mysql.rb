@@ -96,6 +96,7 @@ class Mysql
     @last_error = nil
     @result_exist = false
     @local_infile = nil
+    @ssl_mode = SSL_MODE_PREFERRED
   end
 
   # Connect to mysqld.
@@ -112,7 +113,7 @@ class Mysql
       warn 'unsupported flag: CLIENT_COMPRESS' if $VERBOSE
       flag &= ~CLIENT_COMPRESS
     end
-    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout, @local_infile
+    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout, @local_infile, @ssl_mode
     @protocol.authenticate user, passwd, db, flag, @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
@@ -145,37 +146,61 @@ class Mysql
   #
   # Available options:
   #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_READ_TIMEOUT,
-  #   Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
+  #   Mysql::OPT_SSL_MODE, Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
   # @param [Integer] opt option
   # @param [Integer] value option value that is depend on opt
   # @return [Mysql] self
   def options(opt, value=nil)
     case opt
+#    when Mysql::DEFAULT_AUTH
+#    when Mysql::ENABLE_CLEARTEXT_PLUGIN
     when Mysql::INIT_COMMAND
       @init_command = value.to_s
+#    when Mysql::OPT_BIND
+#    when Mysql::OPT_CAN_HANDLE_EXPIRED_PASSWORDS
 #    when Mysql::OPT_COMPRESS
+#    when Mysql::OPT_COMPRESSION_ALGORITHMS
+#    when Mysql::OPT_CONNECT_ATTR_ADD
+#    when Mysql::OPT_CONNECT_ATTR_DELETE
+#    when Mysql::OPT_CONNECT_ATTR_RESET
     when Mysql::OPT_CONNECT_TIMEOUT
       @connect_timeout = value
-#    when Mysql::GUESS_CONNECTION
-    when Mysql::OPT_LOCAL_INFILE
-      @local_infile = value ? '' : nil
+#    when Mysql::OPT_GET_SERVER_PUBLIC_KEY
     when Mysql::OPT_LOAD_DATA_LOCAL_DIR
       @local_infile = value
+    when Mysql::OPT_LOCAL_INFILE
+      @local_infile = value ? '' : nil
+#    when Mysql::OPT_MAX_ALLOWED_PACKET
 #    when Mysql::OPT_NAMED_PIPE
+#    when Mysql::OPT_NET_BUFFER_LENGTH
+#    when Mysql::OPT_OPTIONAL_RESULTSET_METADATA
 #    when Mysql::OPT_PROTOCOL
     when Mysql::OPT_READ_TIMEOUT
       @read_timeout = value.to_i
 #    when Mysql::OPT_RECONNECT
+#    when Mysql::OPT_RETRY_COUNT
 #    when Mysql::SET_CLIENT_IP
-#    when Mysql::OPT_SSL_VERIFY_SERVER_CERT
-#    when Mysql::OPT_USE_EMBEDDED_CONNECTION
-#    when Mysql::OPT_USE_REMOTE_CONNECTION
+#    when Mysql::OPT_SSL_CA
+#    when Mysql::OPT_SSL_CAPATH
+#    when Mysql::OPT_SSL_CERT
+#    when Mysql::OPT_SSL_CIPHER
+#    when Mysql::OPT_SSL_CRL
+#    when Mysql::OPT_SSL_CRLPATH
+#    when Mysql::OPT_SSL_FIPS_MODE
+#    when Mysql::OPT_SSL_KEY
+    when Mysql::OPT_SSL_MODE
+      @ssl_mode = value
+#    when Mysql::OPT_TLS_CIPHERSUITES
+#    when Mysql::OPT_TLS_VERSION
+#    when Mysql::OPT_USE_RESULT
     when Mysql::OPT_WRITE_TIMEOUT
       @write_timeout = value.to_i
+#    when Mysql::OPT_ZSTD_COMPRESSION_LEVEL
+#    when Mysql::PLUGIN_DIR
 #    when Mysql::READ_DEFAULT_FILE
 #    when Mysql::READ_DEFAULT_GROUP
 #    when Mysql::REPORT_DATA_TRUNCATION
-#    when Mysql::SECURE_AUTH
+#    when Mysql::SERVER_PUBLIC_KEY
 #    when Mysql::SET_CHARSET_DIR
     when Mysql::SET_CHARSET_NAME
       @charset = Charset.by_name value.to_s

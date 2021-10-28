@@ -18,6 +18,10 @@ class Mysql
       # @yield [String] hashed password
       # @return [Mysql::Packet]
       def authenticate(passwd, scramble)
+        if @protocol.client_flags & CLIENT_SSL != 0
+          yield passwd+"\0"
+          return @protocol.read
+        end
         yield "\x01"  # request public key
         pkt = @protocol.read
         data = pkt.to_s

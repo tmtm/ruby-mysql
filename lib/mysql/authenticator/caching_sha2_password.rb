@@ -26,7 +26,10 @@ class Mysql
           when "\x03"  # fast_auth_success
             # OK
           when "\x04"  # perform_full_authentication
-            raise 'Authentication requires secure connection (not supported)'
+            if @protocol.client_flags & CLIENT_SSL == 0
+              raise 'Authentication requires secure connection'
+            end
+            @protocol.write passwd+"\0"
           else
             raise "invalid auth reply packet: #{data.inspect}"
           end

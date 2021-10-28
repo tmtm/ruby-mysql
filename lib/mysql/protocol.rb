@@ -5,6 +5,7 @@
 require "socket"
 require "timeout"
 require "stringio"
+require "openssl"
 require_relative 'authenticator.rb'
 
 class Mysql
@@ -136,9 +137,10 @@ class Mysql
     # read_timeout :: [Integer] read timeout (sec).
     # write_timeout :: [Integer] write timeout (sec).
     # local_infile :: [String] local infile path
+    # ssl_mode :: [Integer]
     # === Exception
     # [ClientError] :: connection timeout
-    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout, local_infile)
+    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout, local_infile, ssl_mode)
       @insert_id = 0
       @warning_count = 0
       @gc_stmt_queue = []   # stmt id list which GC destroy.
@@ -146,6 +148,7 @@ class Mysql
       @read_timeout = read_timeout
       @write_timeout = write_timeout
       @local_infile = local_infile
+      @ssl_mode = ssl_mode
       begin
         Timeout.timeout conn_timeout do
           if host.nil? or host.empty? or host == "localhost"
@@ -181,6 +184,7 @@ class Mysql
       init_packet = InitialPacket.parse read
       @server_info = init_packet.server_version
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+      @server_capabilities = init_packet.server_capabilities
       @thread_id = init_packet.thread_id
       @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_PLUGIN_AUTH
       @client_flags |= CLIENT_LOCAL_FILES if @local_infile
@@ -191,8 +195,36 @@ class Mysql
         @charset = Charset.by_number(init_packet.server_charset)
         @charset.encoding       # raise error if unsupported charset
       end
+      enable_ssl
       Authenticator.new(self).authenticate(user, passwd, db, init_packet.scramble_buff, init_packet.auth_plugin)
       set_state :READY
+    end
+
+    def enable_ssl
+      case @ssl_mode
+      when SSL_MODE_DISABLED
+        return
+      when SSL_MODE_PREFERRED
+        return if @sock.is_a? UNIXSocket
+        return if @server_capabilities & CLIENT_SSL == 0
+      when SSL_MODE_REQUIRED
+        if @server_capabilities & CLIENT_SSL == 0
+          raise ClientError::SslConnectionError, "SSL is required but the server doesn't support it"
+        end
+      else
+        raise ClientError, "ssl_mode #{@ssl_mode} is not supported"
+      end
+      begin
+        @client_flags |= CLIENT_SSL
+        write Protocol::TlsAuthenticationPacket.serialize(@client_flags, 1024**3, @charset.number)
+        @sock = OpenSSL::SSL::SSLSocket.new(@sock)
+        @sock.sync_close = true
+        @sock.connect
+      rescue => e
+        @client_flags &= ~CLIENT_SSL
+        return if @ssl_mode == SSL_MODE_PREFERRED
+        raise e
+      end
     end
 
     # Quit command
@@ -697,6 +729,18 @@ class Mysql
         data.push auth_plugin
         pack.concat "Z*"
         data.pack(pack)
+      end
+    end
+
+    # TLS Authentication packet
+    class TlsAuthenticationPacket
+      def self.serialize(client_flags, max_packet_size, charset_number)
+        [
+          client_flags,
+          max_packet_size,
+          charset_number,
+          "",                   # always 0x00 * 23
+        ].pack("VVCa23")
       end
     end
 
