@@ -97,6 +97,7 @@ class Mysql
     @result_exist = false
     @local_infile = nil
     @ssl_mode = SSL_MODE_PREFERRED
+    @get_server_public_key = false
   end
 
   # Connect to mysqld.
@@ -113,7 +114,7 @@ class Mysql
       warn 'unsupported flag: CLIENT_COMPRESS' if $VERBOSE
       flag &= ~CLIENT_COMPRESS
     end
-    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout, @local_infile, @ssl_mode
+    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout, @local_infile, @ssl_mode, @get_server_public_key
     @protocol.authenticate user, passwd, db, flag, @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
@@ -145,7 +146,8 @@ class Mysql
   # Set option for connection.
   #
   # Available options:
-  #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_READ_TIMEOUT,
+  #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_GET_SERVER_PUBLIC_KEY,
+  #   Mysql::OPT_LOAD_DATA_LOCAL_DIR, Mysql::OPT_LOCAL_INFILE, Mysql::OPT_READ_TIMEOUT,
   #   Mysql::OPT_SSL_MODE, Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
   # @param [Integer] opt option
   # @param [Integer] value option value that is depend on opt
@@ -165,7 +167,8 @@ class Mysql
 #    when Mysql::OPT_CONNECT_ATTR_RESET
     when Mysql::OPT_CONNECT_TIMEOUT
       @connect_timeout = value
-#    when Mysql::OPT_GET_SERVER_PUBLIC_KEY
+    when Mysql::OPT_GET_SERVER_PUBLIC_KEY
+      @get_server_public_key = value
     when Mysql::OPT_LOAD_DATA_LOCAL_DIR
       @local_infile = value
     when Mysql::OPT_LOCAL_INFILE

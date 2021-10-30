@@ -26,10 +26,19 @@ class Mysql
           when "\x03"  # fast_auth_success
             # OK
           when "\x04"  # perform_full_authentication
-            if @protocol.client_flags & CLIENT_SSL == 0
+            if @protocol.client_flags & CLIENT_SSL != 0
+              @protocol.write passwd+"\0"
+            elsif !@protocol.get_server_public_key
               raise 'Authentication requires secure connection'
+            else
+              @protocol.write "\2"  # request public key
+              pkt = @protocol.read
+              pkt.utiny # skip
+              pubkey = pkt.to_s
+              hash = (passwd+"\0").unpack("C*").zip(scramble.unpack("C*")).map{|a, b| a ^ b}.pack("C*")
+              enc = OpenSSL::PKey::RSA.new(pubkey).public_encrypt(hash, OpenSSL::PKey::RSA::PKCS1_OAEP_PADDING)
+              @protocol.write enc
             end
-            @protocol.write passwd+"\0"
           else
             raise "invalid auth reply packet: #{data.inspect}"
           end

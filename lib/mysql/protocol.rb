@@ -120,6 +120,7 @@ class Mysql
     attr_reader :server_status
     attr_reader :warning_count
     attr_reader :message
+    attr_reader :get_server_public_key
     attr_accessor :charset
 
     # @state variable keep state for connection.
@@ -138,9 +139,10 @@ class Mysql
     # write_timeout :: [Integer] write timeout (sec).
     # local_infile :: [String] local infile path
     # ssl_mode :: [Integer]
+    # get_server_public_key :: [Boolean]
     # === Exception
     # [ClientError] :: connection timeout
-    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout, local_infile, ssl_mode)
+    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout, local_infile, ssl_mode, get_server_public_key)
       @insert_id = 0
       @warning_count = 0
       @gc_stmt_queue = []   # stmt id list which GC destroy.
@@ -149,6 +151,7 @@ class Mysql
       @write_timeout = write_timeout
       @local_infile = local_infile
       @ssl_mode = ssl_mode
+      @get_server_public_key = get_server_public_key
       begin
         Timeout.timeout conn_timeout do
           if host.nil? or host.empty? or host == "localhost"
