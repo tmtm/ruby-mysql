@@ -15,11 +15,7 @@ class Mysql
   require "mysql/error"
   require "mysql/charset"
   require "mysql/protocol"
-  begin
-    require "mysql/ext.so"
-  rescue LoadError
-    require "mysql/packet.rb"
-  end
+  require "mysql/packet.rb"
 
   VERSION            = 21000               # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
