@@ -20,8 +20,6 @@ MySQL connector for Ruby.
 
 * MySQL/Ruby 2.8.x とほぼ互換があります。
 
-* MySQL 8.0 には対応していません。
-
 == Synopsis
 
 使用例:
@@ -35,17 +33,17 @@ MySQL connector for Ruby.
 
 == Incompatible with MySQL/Ruby 2.8.x
 
-* Ruby 1.8.x ではシフトJISのような安全でないマルチバイト文字セットに対して Mysql#escape_string を使用すると例外が発生します。
-
 * いくつかのメソッドがありません: Mysql#debug, Mysql#change_user,
   Mysql#create_db, Mysql#drop_db, Mysql#dump_debug_info,
   Mysql#ssl_set, Mysql#reconnect
 
 * Mysql#options でサポートしているオプションは次のものだけです:
   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT,
+  Mysql::OPT_GET_SERVER_PUBLIC_KEY,
+  Mysql::OPT_LOAD_DATA_LOCAL_DIR,
   Mysql::OPT_LOCAL_INFILE, Mysql::OPT_READ_TIMEOUT,
-  Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME,
-  Mysql::OPT_LOAD_DATA_LOCAL_DIR.
+  Mysql::OPT_SSL_MODE,
+  Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME.
   これら以外を指定すると "option not implementted" という warning が標準エラー出力に出力されます。
 
 * Mysql#use_result は Mysql#store_result と同じです。つまりサーバーから一気に結果セットを読み込みます。
