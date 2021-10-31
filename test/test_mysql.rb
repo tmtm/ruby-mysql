@@ -201,10 +201,14 @@ class TestMysql < Test::Unit::TestCase
       end
     end
     test 'OPT_READ_TIMEOUT: set timeout for reading packet' do
-      assert{ @m.options(Mysql::OPT_READ_TIMEOUT, 10) == @m }
+      assert{ @m.options(Mysql::OPT_READ_TIMEOUT, 1) == @m }
+      @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query("select 123").entries
     end
     test 'OPT_WRITE_TIMEOUT: set timeout for writing packet' do
-      assert{ @m.options(Mysql::OPT_WRITE_TIMEOUT, 10) == @m }
+      assert{ @m.options(Mysql::OPT_WRITE_TIMEOUT, 1) == @m }
+      @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query("select 123").entries
     end
     test 'SET_CHARSET_NAME: set charset for connection' do
       assert{ @m.options(Mysql::SET_CHARSET_NAME, 'utf8mb3') == @m }

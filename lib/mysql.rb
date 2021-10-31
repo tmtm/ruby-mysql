@@ -181,7 +181,7 @@ class Mysql
 #    when Mysql::OPT_OPTIONAL_RESULTSET_METADATA
 #    when Mysql::OPT_PROTOCOL
     when Mysql::OPT_READ_TIMEOUT
-      @opts[:read_timeout] = value.to_i
+      @opts[:read_timeout] = value
 #    when Mysql::OPT_RECONNECT
 #    when Mysql::OPT_RETRY_COUNT
 #    when Mysql::SET_CLIENT_IP
@@ -199,7 +199,7 @@ class Mysql
 #    when Mysql::OPT_TLS_VERSION
 #    when Mysql::OPT_USE_RESULT
     when Mysql::OPT_WRITE_TIMEOUT
-      @opts[:write_timeout] = value.to_i
+      @opts[:write_timeout] = value
 #    when Mysql::OPT_ZSTD_COMPRESSION_LEVEL
 #    when Mysql::PLUGIN_DIR
 #    when Mysql::READ_DEFAULT_FILE

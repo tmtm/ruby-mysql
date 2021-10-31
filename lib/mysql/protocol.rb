@@ -3,7 +3,6 @@
 # mailto:tommy@tmtm.org
 
 require "socket"
-require "timeout"
 require "stringio"
 require "openssl"
 require_relative 'authenticator.rb'
@@ -511,20 +510,18 @@ class Mysql
       data = ''
       len = nil
       begin
-        Timeout.timeout @opts[:read_timeout] do
-          header = @socket.read(4)
-          raise EOFError unless header && header.length == 4
-          len1, len2, seq = header.unpack("CvC")
-          len = (len2 << 8) + len1
-          raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
-          @seq = (@seq + 1) % 256
-          ret = @socket.read(len)
-          raise EOFError unless ret && ret.length == len
-          data.concat ret
-        end
+        header = read_timeout(4, @opts[:read_timeout])
+        raise EOFError unless header && header.length == 4
+        len1, len2, seq = header.unpack("CvC")
+        len = (len2 << 8) + len1
+        raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
+        @seq = (@seq + 1) % 256
+        ret = read_timeout(len, @opts[:read_timeout])
+        raise EOFError unless ret && ret.length == len
+        data.concat ret
       rescue EOFError
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
-      rescue Timeout::Error
+      rescue Errno::ETIMEDOUT
         raise ClientError, "read timeout"
       end while len == MAX_PACKET_LENGTH
 
@@ -546,32 +543,71 @@ class Mysql
       Packet.new(data)
     end
 
+    def read_timeout(len, timeout)
+      return @socket.read(len) if timeout.nil? || timeout == 0
+      result = ''
+      e = ::Time.now + timeout
+      while result.size < len
+        now = ::Time.now
+        raise Errno::ETIMEDOUT if now > e
+        r = @socket.read_nonblock(len - result.size, exception: false)
+        case r
+        when :wait_readable
+          IO.select([@socket], nil, nil, e - now)
+          next
+        when :wait_writable
+          IO.select(nil, [@socket], nil, e - now)
+          next
+        else
+          result << r
+        end
+      end
+      return result
+    end
+
     # Write one packet data
     # === Argument
     # data :: [String / IO] packet data. If data is nil, write empty packet.
     def write(data)
       begin
-        Timeout.timeout @opts[:write_timeout] do
-          @socket.sync = false
-          if data.nil?
-            @socket.write [0, 0, @seq].pack("CvC")
+        @socket.sync = false
+        if data.nil?
+          write_timeout([0, 0, @seq].pack("CvC"), @opts[:write_timeout])
+          @seq = (@seq + 1) % 256
+        else
+          data = StringIO.new data if data.is_a? String
+          while d = data.read(MAX_PACKET_LENGTH)
+            write_timeout([d.length%256, d.length/256, @seq].pack("CvC")+d, @opts[:write_timeout])
             @seq = (@seq + 1) % 256
-          else
-            data = StringIO.new data if data.is_a? String
-            while d = data.read(MAX_PACKET_LENGTH)
-              @socket.write [d.length%256, d.length/256, @seq].pack("CvC")
-              @socket.write d
-              @seq = (@seq + 1) % 256
-            end
           end
-          @socket.sync = true
-          @socket.flush
         end
+        @socket.sync = true
+        @socket.flush
       rescue Errno::EPIPE
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
-      rescue Timeout::Error
+      rescue Errno::ETIMEDOUT
         raise ClientError, "write timeout"
       end
+    end
+
+    def write_timeout(data, timeout)
+      return @socket.write(data) if timeout.nil? || timeout == 0
+      len = 0
+      e = ::Time.now + timeout
+      while len < data.size
+        now = ::Time.now
+        raise Errno::ETIMEDOUT if now > e
+        l = @socket.write_nonblock(data[len..-1], exception: false)
+        case l
+        when :wait_readable
+          IO.select([@socket], nil, nil, e - now)
+        when :wait_writable
+          IO.select(nil, [@socket], nil, e - now)
+        else
+          len += l
+        end
+      end
+      return len
     end
 
     # Read EOF packet
