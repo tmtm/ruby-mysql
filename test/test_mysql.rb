@@ -140,8 +140,8 @@ class TestMysql < Test::Unit::TestCase
     end
     test 'OPT_CONNECT_TIMEOUT: set timeout for connecting' do
       assert{ @m.options(Mysql::OPT_CONNECT_TIMEOUT, 0.1) == @m }
-      stub(UNIXSocket).new{ sleep 1}
-      stub(TCPSocket).new{ sleep 1}
+      stub(Socket).tcp{ raise Errno::ETIMEDOUT }
+      stub(Socket).unix{ raise Errno::ETIMEDOUT }
       assert_raise Mysql::ClientError, 'connection timeout' do
         @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       end

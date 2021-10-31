@@ -86,18 +86,20 @@ class Mysql
     @fields = nil
     @protocol = nil
     @charset = nil
-    @connect_timeout = nil
-    @read_timeout = nil
-    @write_timeout = nil
     @init_command = nil
     @sqlstate = "00000"
     @query_with_result = true
     @host_info = nil
     @last_error = nil
     @result_exist = false
-    @local_infile = nil
-    @ssl_mode = SSL_MODE_PREFERRED
-    @get_server_public_key = false
+    @opts = {
+      connect_timeout: nil,
+      read_timeout: nil,
+      write_timeout: nil,
+      local_infile: nil,
+      ssl_mode: SSL_MODE_PREFERRED,
+      get_server_public_key: false,
+    }
   end
 
   # Connect to mysqld.
@@ -114,7 +116,7 @@ class Mysql
       warn 'unsupported flag: CLIENT_COMPRESS' if $VERBOSE
       flag &= ~CLIENT_COMPRESS
     end
-    @protocol = Protocol.new host, port, socket, @connect_timeout, @read_timeout, @write_timeout, @local_infile, @ssl_mode, @get_server_public_key
+    @protocol = Protocol.new(host, port, socket, @opts)
     @protocol.authenticate user, passwd, db, flag, @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
@@ -166,20 +168,20 @@ class Mysql
 #    when Mysql::OPT_CONNECT_ATTR_DELETE
 #    when Mysql::OPT_CONNECT_ATTR_RESET
     when Mysql::OPT_CONNECT_TIMEOUT
-      @connect_timeout = value
+      @opts[:connect_timeout] = value
     when Mysql::OPT_GET_SERVER_PUBLIC_KEY
-      @get_server_public_key = value
+      @opts[:get_server_public_key] = value
     when Mysql::OPT_LOAD_DATA_LOCAL_DIR
-      @local_infile = value
+      @opts[:local_infile] = value
     when Mysql::OPT_LOCAL_INFILE
-      @local_infile = value ? '' : nil
+      @opts[:local_infile] = value ? '' : nil
 #    when Mysql::OPT_MAX_ALLOWED_PACKET
 #    when Mysql::OPT_NAMED_PIPE
 #    when Mysql::OPT_NET_BUFFER_LENGTH
 #    when Mysql::OPT_OPTIONAL_RESULTSET_METADATA
 #    when Mysql::OPT_PROTOCOL
     when Mysql::OPT_READ_TIMEOUT
-      @read_timeout = value.to_i
+      @opts[:read_timeout] = value.to_i
 #    when Mysql::OPT_RECONNECT
 #    when Mysql::OPT_RETRY_COUNT
 #    when Mysql::SET_CLIENT_IP
@@ -192,12 +194,12 @@ class Mysql
 #    when Mysql::OPT_SSL_FIPS_MODE
 #    when Mysql::OPT_SSL_KEY
     when Mysql::OPT_SSL_MODE
-      @ssl_mode = value
+      @opts[:ssl_mode] = value
 #    when Mysql::OPT_TLS_CIPHERSUITES
 #    when Mysql::OPT_TLS_VERSION
 #    when Mysql::OPT_USE_RESULT
     when Mysql::OPT_WRITE_TIMEOUT
-      @write_timeout = value.to_i
+      @opts[:write_timeout] = value.to_i
 #    when Mysql::OPT_ZSTD_COMPRESSION_LEVEL
 #    when Mysql::PLUGIN_DIR
 #    when Mysql::READ_DEFAULT_FILE

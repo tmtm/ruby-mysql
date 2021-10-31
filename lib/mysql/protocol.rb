@@ -130,45 +130,38 @@ class Mysql
     # :RESULT :: After retr_fields(), retr_all_records() or stmt_retr_all_records() is needed.
 
     # make socket connection to server.
-    # === Argument
-    # host :: [String] if "localhost" or "" nil then use UNIXSocket. Otherwise use TCPSocket
-    # port :: [Integer] port number using by TCPSocket
-    # socket :: [String] socket file name using by UNIXSocket
-    # conn_timeout :: [Integer] connect timeout (sec).
-    # read_timeout :: [Integer] read timeout (sec).
-    # write_timeout :: [Integer] write timeout (sec).
-    # local_infile :: [String] local infile path
-    # ssl_mode :: [Integer]
-    # get_server_public_key :: [Boolean]
-    # === Exception
-    # [ClientError] :: connection timeout
-    def initialize(host, port, socket, conn_timeout, read_timeout, write_timeout, local_infile, ssl_mode, get_server_public_key)
+    # @param host [String] if "localhost" or "" or nil then use UNIX socket. Otherwise use TCP socket
+    # @param port [Integer] port number using by TCP socket
+    # @param socket [String] socket file name using by UNIX socket
+    # @param [Hash] opts
+    # @option opts :conn_timeout [Integer] connect timeout (sec).
+    # @option opts :read_timeout [Integer] read timeout (sec).
+    # @option opts :write_timeout [Integer] write timeout (sec).
+    # @option opts :local_infile [String] local infile path
+    # @option opts :get_server_public_key [Boolean]
+    # @raise [ClientError] connection timeout
+    def initialize(host, port, socket, opts)
+      @opts = opts
       @insert_id = 0
       @warning_count = 0
       @gc_stmt_queue = []   # stmt id list which GC destroy.
       set_state :INIT
-      @read_timeout = read_timeout
-      @write_timeout = write_timeout
-      @local_infile = local_infile
-      @ssl_mode = ssl_mode
-      @get_server_public_key = get_server_public_key
+      @get_server_public_key = @opts[:get_server_public_key]
       begin
-        Timeout.timeout conn_timeout do
-          if host.nil? or host.empty? or host == "localhost"
-            socket ||= ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
-            @sock = UNIXSocket.new socket
-          else
-            port ||= ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql","tcp") rescue MYSQL_TCP_PORT)
-            @sock = TCPSocket.new host, port
-          end
+        if host.nil? or host.empty? or host == "localhost"
+          socket ||= ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
+          @socket = Socket.unix(socket)
+        else
+          port ||= ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql","tcp") rescue MYSQL_TCP_PORT)
+          @socket = Socket.tcp(host, port, connect_timeout: @opts[:connect_timeout])
         end
-      rescue Timeout::Error
+      rescue Errno::ETIMEDOUT
         raise ClientError, "connection timeout"
       end
     end
 
     def close
-      @sock.close
+      @socket.close
     end
 
     # initial negotiate and authenticate.
@@ -190,7 +183,7 @@ class Mysql
       @server_capabilities = init_packet.server_capabilities
       @thread_id = init_packet.thread_id
       @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_PLUGIN_AUTH
-      @client_flags |= CLIENT_LOCAL_FILES if @local_infile
+      @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile]
       @client_flags |= CLIENT_CONNECT_WITH_DB if db
       @client_flags |= flag
       @charset = charset
@@ -204,28 +197,28 @@ class Mysql
     end
 
     def enable_ssl
-      case @ssl_mode
+      case @opts[:ssl_mode]
       when SSL_MODE_DISABLED
         return
       when SSL_MODE_PREFERRED
-        return if @sock.is_a? UNIXSocket
+        return if @socket.local_address.unix?
         return if @server_capabilities & CLIENT_SSL == 0
       when SSL_MODE_REQUIRED
         if @server_capabilities & CLIENT_SSL == 0
           raise ClientError::SslConnectionError, "SSL is required but the server doesn't support it"
         end
       else
-        raise ClientError, "ssl_mode #{@ssl_mode} is not supported"
+        raise ClientError, "ssl_mode #{@opts[:ssl_mode]} is not supported"
       end
       begin
         @client_flags |= CLIENT_SSL
         write Protocol::TlsAuthenticationPacket.serialize(@client_flags, 1024**3, @charset.number)
-        @sock = OpenSSL::SSL::SSLSocket.new(@sock)
-        @sock.sync_close = true
-        @sock.connect
+        @socket = OpenSSL::SSL::SSLSocket.new(@socket)
+        @socket.sync_close = true
+        @socket.connect
       rescue => e
         @client_flags &= ~CLIENT_SSL
-        return if @ssl_mode == SSL_MODE_PREFERRED
+        return if @opts[:ssl_mode] == SSL_MODE_PREFERRED
         raise e
       end
     end
@@ -282,7 +275,7 @@ class Mysql
     # send local file to server
     def send_local_file(filename)
       filename = File.absolute_path(filename)
-      if filename.start_with? @local_infile
+      if filename.start_with? @opts[:local_infile]
         File.open(filename){|f| write f}
       else
         raise ClientError::LoadDataLocalInfileRejected, 'LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.'
@@ -482,7 +475,7 @@ class Mysql
 
     def set_state(st)
       @state = st
-      if st == :READY
+      if st == :READY && !@gc_stmt_queue.empty?
         gc_disabled = GC.disable
         begin
           while st = @gc_stmt_queue.shift
@@ -518,14 +511,14 @@ class Mysql
       data = ''
       len = nil
       begin
-        Timeout.timeout @read_timeout do
-          header = @sock.read(4)
+        Timeout.timeout @opts[:read_timeout] do
+          header = @socket.read(4)
           raise EOFError unless header && header.length == 4
           len1, len2, seq = header.unpack("CvC")
           len = (len2 << 8) + len1
           raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
           @seq = (@seq + 1) % 256
-          ret = @sock.read(len)
+          ret = @socket.read(len)
           raise EOFError unless ret && ret.length == len
           data.concat ret
         end
@@ -558,25 +551,21 @@ class Mysql
     # data :: [String / IO] packet data. If data is nil, write empty packet.
     def write(data)
       begin
-        @sock.sync = false
-        if data.nil?
-          Timeout.timeout @write_timeout do
-            @sock.write [0, 0, @seq].pack("CvC")
-          end
-          @seq = (@seq + 1) % 256
-        else
-          data = StringIO.new data if data.is_a? String
-          while d = data.read(MAX_PACKET_LENGTH)
-            Timeout.timeout @write_timeout do
-              @sock.write [d.length%256, d.length/256, @seq].pack("CvC")
-              @sock.write d
-            end
+        Timeout.timeout @opts[:write_timeout] do
+          @socket.sync = false
+          if data.nil?
+            @socket.write [0, 0, @seq].pack("CvC")
             @seq = (@seq + 1) % 256
+          else
+            data = StringIO.new data if data.is_a? String
+            while d = data.read(MAX_PACKET_LENGTH)
+              @socket.write [d.length%256, d.length/256, @seq].pack("CvC")
+              @socket.write d
+              @seq = (@seq + 1) % 256
+            end
           end
-        end
-        @sock.sync = true
-        Timeout.timeout @write_timeout do
-          @sock.flush
+          @socket.sync = true
+          @socket.flush
         end
       rescue Errno::EPIPE
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
