@@ -17,13 +17,9 @@ class Mysql
     # @param [String] csname
     def initialize(number, name, csname)
       @number, @name, @csname = number, name, csname
-      @unsafe = false
     end
 
     attr_reader :number, :name, :csname
-
-    # @private
-    attr_accessor :unsafe
 
     # [[charset_number, charset_name, collation_name, default], ...]
     # @private
@@ -334,11 +330,6 @@ class Mysql
     ]
 
     # @private
-    UNSAFE_CHARSET = [
-      "big5", "sjis", "filename", "gbk", "ucs2", "cp932",
-    ]
-
-    # @private
     NUMBER_TO_CHARSET = {}
     # @private
     COLLATION_TO_CHARSET = {}
@@ -346,7 +337,6 @@ class Mysql
     CHARSET_DEFAULT = {}
     CHARSETS.each do |number, csname, clname, default|
       cs = Charset.new number, csname, clname
-      cs.unsafe = true if UNSAFE_CHARSET.include? csname
       NUMBER_TO_CHARSET[number] = cs
       COLLATION_TO_CHARSET[clname] = cs
       CHARSET_DEFAULT[csname] = cs if default
@@ -372,110 +362,87 @@ class Mysql
       ret
     end
 
-    if defined? Encoding
+    # @private
+    # MySQL Charset -> Ruby's Encoding
+    CHARSET_ENCODING = {
+      "armscii8" => nil,
+      "ascii"    => Encoding::US_ASCII,
+      "big5"     => Encoding::Big5,
+      "binary"   => Encoding::ASCII_8BIT,
+      "cp1250"   => Encoding::Windows_1250,
+      "cp1251"   => Encoding::Windows_1251,
+      "cp1256"   => Encoding::Windows_1256,
+      "cp1257"   => Encoding::Windows_1257,
+      "cp850"    => Encoding::CP850,
+      "cp852"    => Encoding::CP852,
+      "cp866"    => Encoding::IBM866,
+      "cp932"    => Encoding::Windows_31J,
+      "dec8"     => nil,
+      "eucjpms"  => Encoding::EucJP_ms,
+      "euckr"    => Encoding::EUC_KR,
+      "gb18030"  => Encoding::GB18030,
+      "gb2312"   => Encoding::EUC_CN,
+      "gbk"      => Encoding::GBK,
+      "geostd8"  => nil,
+      "greek"    => Encoding::ISO_8859_7,
+      "hebrew"   => Encoding::ISO_8859_8,
+      "hp8"      => nil,
+      "keybcs2"  => nil,
+      "koi8r"    => Encoding::KOI8_R,
+      "koi8u"    => Encoding::KOI8_U,
+      "latin1"   => Encoding::ISO_8859_1,
+      "latin2"   => Encoding::ISO_8859_2,
+      "latin5"   => Encoding::ISO_8859_9,
+      "latin7"   => Encoding::ISO_8859_13,
+      "macce"    => Encoding::MacCentEuro,
+      "macroman" => Encoding::MacRoman,
+      "sjis"     => Encoding::SHIFT_JIS,
+      "swe7"     => nil,
+      "tis620"   => Encoding::TIS_620,
+      "ucs2"     => Encoding::UTF_16BE,
+      "ujis"     => Encoding::EucJP_ms,
+      "utf16"    => Encoding::UTF_16BE,
+      "utf16le"  => Encoding::UTF_16LE,
+      "utf32"    => Encoding::UTF_32BE,
+      "utf8"     => Encoding::UTF_8,
+      "utf8mb3"  => Encoding::UTF_8,
+      "utf8mb4"  => Encoding::UTF_8,
+    }
 
-      # @private
-      # MySQL Charset -> Ruby's Encoding
-      CHARSET_ENCODING = {
-        "armscii8" => nil,
-        "ascii"    => Encoding::US_ASCII,
-        "big5"     => Encoding::Big5,
-        "binary"   => Encoding::ASCII_8BIT,
-        "cp1250"   => Encoding::Windows_1250,
-        "cp1251"   => Encoding::Windows_1251,
-        "cp1256"   => Encoding::Windows_1256,
-        "cp1257"   => Encoding::Windows_1257,
-        "cp850"    => Encoding::CP850,
-        "cp852"    => Encoding::CP852,
-        "cp866"    => Encoding::IBM866,
-        "cp932"    => Encoding::Windows_31J,
-        "dec8"     => nil,
-        "eucjpms"  => Encoding::EucJP_ms,
-        "euckr"    => Encoding::EUC_KR,
-        "gb18030"  => Encoding::GB18030,
-        "gb2312"   => Encoding::EUC_CN,
-        "gbk"      => Encoding::GBK,
-        "geostd8"  => nil,
-        "greek"    => Encoding::ISO_8859_7,
-        "hebrew"   => Encoding::ISO_8859_8,
-        "hp8"      => nil,
-        "keybcs2"  => nil,
-        "koi8r"    => Encoding::KOI8_R,
-        "koi8u"    => Encoding::KOI8_U,
-        "latin1"   => Encoding::ISO_8859_1,
-        "latin2"   => Encoding::ISO_8859_2,
-        "latin5"   => Encoding::ISO_8859_9,
-        "latin7"   => Encoding::ISO_8859_13,
-        "macce"    => Encoding::MacCentEuro,
-        "macroman" => Encoding::MacRoman,
-        "sjis"     => Encoding::SHIFT_JIS,
-        "swe7"     => nil,
-        "tis620"   => Encoding::TIS_620,
-        "ucs2"     => Encoding::UTF_16BE,
-        "ujis"     => Encoding::EucJP_ms,
-        "utf16"    => Encoding::UTF_16BE,
-        "utf16le"  => Encoding::UTF_16LE,
-        "utf32"    => Encoding::UTF_32BE,
-        "utf8"     => Encoding::UTF_8,
-        "utf8mb3"  => Encoding::UTF_8,
-        "utf8mb4"  => Encoding::UTF_8,
-      }
+    # @private
+    # @param [String] value
+    # @return [String]
+    def self.to_binary(value)
+      value.force_encoding Encoding::ASCII_8BIT
+    end
 
-      # @private
-      # @param [String] value
-      # @return [String]
-      def self.to_binary(value)
-        value.force_encoding Encoding::ASCII_8BIT
+    # @private
+    # convert raw to encoding and convert to Encoding.default_internal
+    # @param [String] raw
+    # @param [Encoding] encoding
+    # @return [String] result
+    def self.convert_encoding(raw, encoding)
+      raw.force_encoding(encoding).encode
+    end
+
+    # @private
+    # retrun corresponding Ruby encoding
+    # @return [Encoding] encoding
+    def encoding
+      enc = CHARSET_ENCODING[@name.downcase]
+      raise Mysql::ClientError, "unsupported charset: #{@name}" unless enc
+      enc
+    end
+
+    # @private
+    # convert encoding to corrensponding to MySQL charset
+    # @param [String] value
+    # @return [String]
+    def convert(value)
+      if value.is_a? String and value.encoding != Encoding::ASCII_8BIT
+        value = value.encode encoding
       end
-
-      # @private
-      # convert raw to encoding and convert to Encoding.default_internal
-      # @param [String] raw
-      # @param [Encoding] encoding
-      # @return [String] result
-      def self.convert_encoding(raw, encoding)
-        raw.force_encoding(encoding).encode
-      end
-
-      # @private
-      # retrun corresponding Ruby encoding
-      # @return [Encoding] encoding
-      def encoding
-        enc = CHARSET_ENCODING[@name.downcase]
-        raise Mysql::ClientError, "unsupported charset: #{@name}" unless enc
-        enc
-      end
-
-      # @private
-      # convert encoding to corrensponding to MySQL charset
-      # @param [String] value
-      # @return [String]
-      def convert(value)
-        if value.is_a? String and value.encoding != Encoding::ASCII_8BIT
-          value = value.encode encoding
-        end
-        value
-      end
-
-    else
-      # for Ruby 1.8
-
-      def self.to_binary(value)
-        value
-      end
-
-      def self.convert_encoding(raw, encoding)
-        raw
-      end
-
-      def encoding
-        nil
-      end
-
-      def convert(value)
-        value
-      end
-
+      value
     end
   end
 end

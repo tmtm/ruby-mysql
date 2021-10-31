@@ -214,14 +214,9 @@ class Mysql
 
   # Escape special character in MySQL.
   #
-  # In Ruby 1.8, this is not safe for multibyte charset such as 'SJIS'.
-  # You should use place-holder in prepared-statement.
   # @param [String] str
   # return [String]
   def escape_string(str)
-    if not defined? Encoding and @charset.unsafe
-      raise ClientError, 'Mysql#escape_string is called for unsafe multibyte charset'
-    end
     self.class.escape_string str
   end
   alias quote escape_string
@@ -467,7 +462,6 @@ class Mysql
     store_result
   end
 
-  # @note for Ruby 1.8: This is not multi-byte safe. Don't use for multi-byte charset such as cp932.
   # @param [String] table database name that may contain wild card.
   # @return [Array<String>] list of table name.
   def list_tables(table=nil)
