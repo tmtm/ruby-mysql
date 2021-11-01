@@ -30,29 +30,18 @@ class TestMysql < Test::Unit::TestCase
     end
   end
 
-  sub_test_case 'Mysql.real_connect' do
-    test 'connect to mysqld' do
-      @m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-      assert{ @m.kind_of? Mysql }
-    end
-
-    test 'flag argument affects' do
-      @m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET, Mysql::CLIENT_FOUND_ROWS)
-      @m.query 'create temporary table t (c int)'
-      @m.query 'insert into t values (123)'
-      @m.query 'update t set c=123'
-      assert{ @m.affected_rows == 1 }
-    end
-
-    teardown do
-      @m.close if @m
-    end
-  end
-
   sub_test_case 'Mysql.connect' do
     test 'connect to mysqld' do
       @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       assert{ @m.kind_of? Mysql }
+    end
+
+    test 'flag argument affects' do
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET, Mysql::CLIENT_FOUND_ROWS)
+      @m.query 'create temporary table t (c int)'
+      @m.query 'insert into t values (123)'
+      @m.query 'update t set c=123'
+      assert{ @m.affected_rows == 1 }
     end
 
     teardown do
@@ -79,40 +68,6 @@ class TestMysql < Test::Unit::TestCase
   sub_test_case 'Mysql.quote' do
     test 'escape special character' do
       assert{ Mysql.quote("abc'def\"ghi\0jkl%mno") == "abc\\'def\\\"ghi\\0jkl%mno" }
-    end
-  end
-
-  sub_test_case 'Mysql.client_info' do
-    test 'returns client version as string' do
-      assert{ Mysql.client_info == '5.0.0' }
-    end
-  end
-
-  sub_test_case 'Mysql.get_client_info' do
-    test 'returns client version as string' do
-      assert{ Mysql.get_client_info == '5.0.0' }
-    end
-  end
-
-  sub_test_case 'Mysql.client_version' do
-    test 'returns client version as Integer' do
-      assert{ Mysql.client_version == 50000 }
-    end
-  end
-
-  sub_test_case 'Mysql.get_client_version' do
-    test 'returns client version as Integer' do
-      assert{ Mysql.client_version == 50000 }
-    end
-  end
-
-  sub_test_case 'Mysql#real_connect' do
-    test 'connect to mysqld' do
-      @m = Mysql.init
-      assert{ @m.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET) == @m }
-    end
-    teardown do
-      @m.close if @m
     end
   end
 
@@ -242,18 +197,6 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
-    sub_test_case '#client_info' do
-      test 'returns client version as string' do
-        assert{ @m.client_info == '5.0.0' }
-      end
-    end
-
-    sub_test_case '#get_client_info' do
-      test 'returns client version as string' do
-        assert{ @m.get_client_info == '5.0.0' }
-      end
-    end
-
     sub_test_case '#affected_rows' do
       test 'returns number of affected rows' do
         @m.query 'create temporary table t (id int)'
@@ -313,28 +256,6 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
-    sub_test_case '#client_version' do
-      test 'returns client version as Integer' do
-        assert{ @m.client_version.kind_of? Integer }
-      end
-    end
-
-    sub_test_case '#get_client_version' do
-      test 'returns client version as Integer' do
-        assert{ @m.get_client_version.kind_of? Integer }
-      end
-    end
-
-    sub_test_case '#get_host_info' do
-      test 'returns connection type as String' do
-        if MYSQL_SERVER == nil or MYSQL_SERVER == 'localhost'
-          assert{ @m.get_host_info == 'Localhost via UNIX socket' }
-        else
-          assert{ @m.get_host_info == "#{MYSQL_SERVER} via TCP/IP" }
-        end
-      end
-    end
-
     sub_test_case '#host_info' do
       test 'returns connection type as String' do
         if MYSQL_SERVER == nil or MYSQL_SERVER == 'localhost'
@@ -342,24 +263,6 @@ class TestMysql < Test::Unit::TestCase
         else
           assert{ @m.host_info == "#{MYSQL_SERVER} via TCP/IP" }
         end
-      end
-    end
-
-    sub_test_case '#get_proto_info' do
-      test 'returns version of connection as Integer' do
-        assert{ @m.get_proto_info == 10 }
-      end
-    end
-
-    sub_test_case '#proto_info' do
-      test 'returns version of connection as Integer' do
-        assert{ @m.proto_info == 10 }
-      end
-    end
-
-    sub_test_case '#get_server_info' do
-      test 'returns server version as String' do
-        assert{ @m.get_server_info =~ /\A\d+\.\d+\.\d+/ }
       end
     end
 
@@ -476,12 +379,6 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
-    sub_test_case '#real_query' do
-      test 'is same as #query' do
-        assert{ @m.real_query('select 123').kind_of? Mysql::Result }
-      end
-    end
-
     sub_test_case '#refresh' do
       test 'returns self' do
         assert{ @m.refresh(Mysql::REFRESH_HOSTS) == @m }
@@ -555,12 +452,6 @@ class TestMysql < Test::Unit::TestCase
         assert_raise Mysql::ClientError, 'invalid usage' do
           @m.use_result
         end
-      end
-    end
-
-    sub_test_case '#get_server_version' do
-      test 'returns server version as Integer' do
-        assert{ @m.get_server_version.kind_of? Integer }
       end
     end
 

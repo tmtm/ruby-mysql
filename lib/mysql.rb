@@ -46,7 +46,6 @@ class Mysql
       my.connect(*args)
     end
 
-    alias real_connect new
     alias connect new
 
     # Escape special character in string.
@@ -64,18 +63,6 @@ class Mysql
       end
     end
     alias quote escape_string
-
-    # @return [String] client version. This value is dummy for MySQL/Ruby compatibility.
-    def client_info
-      "5.0.0"
-    end
-    alias get_client_info client_info
-
-    # @return [Integer] client version. This value is dummy for MySQL/Ruby compatibility.
-    def client_version
-      50000
-    end
-    alias get_client_version client_version
   end
 
   def initialize
@@ -119,7 +106,6 @@ class Mysql
     query @init_command if @init_command
     return self
   end
-  alias real_connect connect
 
   # Disconnect from mysql.
   # @return [Mysql] self
@@ -221,18 +207,6 @@ class Mysql
   end
   alias quote escape_string
 
-  # @return [String] client version
-  def client_info
-    self.class.client_info
-  end
-  alias get_client_info client_info
-
-  # @return [Integer] client version
-  def client_version
-    self.class.client_version
-  end
-  alias get_client_version client_version
-
   # Set charset of MySQL connection.
   # @param [String / Mysql::Charset] cs
   def charset=(cs)
@@ -274,27 +248,18 @@ class Mysql
   def host_info
     @host_info
   end
-  alias get_host_info host_info
-
-  # @return [Integer] protocol version
-  def proto_info
-    Mysql::Protocol::VERSION
-  end
-  alias get_proto_info proto_info
 
   # @return [String] server version
   def server_info
     check_connection
     @protocol.server_info
   end
-  alias get_server_info server_info
 
   # @return [Integer] server version
   def server_version
     check_connection
     @protocol.server_version
   end
-  alias get_server_version server_version
 
   # @return [String] information for last query
   def info
@@ -368,7 +333,6 @@ class Mysql
       raise
     end
   end
-  alias real_query query
 
   # Get all data for last query if query_with_result is false.
   # @return [Mysql::Result]

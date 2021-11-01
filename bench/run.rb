@@ -10,7 +10,7 @@ MYSQL_DATABASE = ENV['MYSQL_DATABASE'] || 'test'
 MYSQL_PORT     = ENV['MYSQL_PORT']
 MYSQL_SOCKET   = ENV['MYSQL_SOCKET']
 
-m = Mysql.real_connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
 unless m.query('show tables').any?{|tbl,| tbl == 'bench_test'}
   m.query <<EOS
 create table bench_test (
