@@ -1,0 +1,4 @@
+[mysqld]
+local-infile = true
+max-allowed-packet = 100000000
+innodb-log-files-in-group = 10

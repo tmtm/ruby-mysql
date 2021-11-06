@@ -1,6 +1,7 @@
 source 'http://rubygems.org'
 
-group :test do
+group :development do
+  gem 'rake'
   gem 'test-unit'
   gem 'test-unit-rr'
 end

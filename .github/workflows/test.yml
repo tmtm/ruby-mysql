@@ -1,0 +1,33 @@
+name: test
+on: push
+env:
+  MYSQL_SERVER: 127.0.0.1
+  MYSQL_USER: root
+  MYSQL_PORT: 3306
+jobs:
+  mysql-test:
+    strategy:
+      matrix:
+        ruby: ['2.5', '2.6', '2.7', '3.0']
+        mysql: ['5.5', '5.6', '5.7', '8.0.21']
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql }}
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: test_for_mysql_ruby
+        options: --health-cmd "mysqladmin ping"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+      - run: docker cp .github/workflows/mysqld.cnf ${{ job.services.mysql.id }}:/etc/mysql/conf.d/
+      - run: docker exec ${{ job.services.mysql.id }} rm -f /var/lib/mysql/ib_logfile{0,1,2,3}
+      - run: docker restart ${{ job.services.mysql.id }}
+      - run: while status="$(docker inspect -f '{{.State.Health.Status}}' ${{ job.services.mysql.id }})" && echo "$status" && test "$status" = starting; do sleep 1; done
+      - run: bundle install
+      - run: bundle exec rake test
