@@ -9,6 +9,9 @@
 # * MYSQL_PORT      - default: 3306
 # * MYSQL_SOCKET    - defualt: '/tmp/mysql.sock'
 #
+
+require "bundler/gem_tasks"
+
 require 'rake/testtask'
 Rake::TestTask.new do |t|
   t.pattern = 'test/test*.rb'
