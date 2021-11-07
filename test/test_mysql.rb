@@ -230,22 +230,9 @@ class TestMysql < Test::Unit::TestCase
     end
 
     sub_test_case '#escape_string' do
-      if defined? ::Encoding
-        test 'escape special character for charset' do
-          @m.charset = 'cp932'
-          assert{ @m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')) == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932') }
-        end
-      else
-        test 'raise error if charset is multibyte' do
-          @m.charset = 'cp932'
-          assert_raise Mysql::ClientError, 'Mysql#escape_string is called for unsafe multibyte charset' do
-            @m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\")
-          end
-        end
-        test 'not warn if charset is singlebyte' do
-          @m.charset = 'latin1'
-          assert{ @m.escape_string("abc'def\"ghi\0jkl%mno_\x95\\") == "abc\\'def\\\"ghi\\0jkl%mno_\x95\\\\" }
-        end
+      test 'escape special character for charset' do
+        @m.charset = 'cp932'
+        assert{ @m.escape_string("abc'def\"ghi\0jkl%mno_表".encode('cp932')) == "abc\\'def\\\"ghi\\0jkl%mno_表".encode('cp932') }
       end
     end
 
@@ -1254,20 +1241,16 @@ class TestMysql < Test::Unit::TestCase
       @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
       @s.prepare 'select i from t'
       @s.execute
-      if defined? Encoding
-        assert{ @s.entries == [
-            ["\x00".force_encoding('ASCII-8BIT')],
-            ["\xff".force_encoding('ASCII-8BIT')],
-            ["\x7f".force_encoding('ASCII-8BIT')],
-            ["\xff".force_encoding('ASCII-8BIT')],
-            ["\xff".force_encoding('ASCII-8BIT')],
-            ["\xff".force_encoding('ASCII-8BIT')],
-            ["\xff".force_encoding('ASCII-8BIT')],
-          ]
-        }
-      else
-        assert{ @s.entries == [["\x00"], ["\xff"], ["\x7f"], ["\xff"], ["\xff"], ["\xff"], ["\xff"]] }
-      end
+      assert{ @s.entries == [
+          ["\x00".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\x7f".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+        ]
+      }
     end
 
     test '#fetch bit column (64bit)' do
@@ -1275,25 +1258,14 @@ class TestMysql < Test::Unit::TestCase
       @m.query 'insert into t values (0),(-1),(4294967296),(18446744073709551615),(18446744073709551616)'
       @s.prepare 'select i from t'
       @s.execute
-      if defined? Encoding
-        assert{ @s.entries == [
-            ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
-            ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
-            ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
-            ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
-            ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
-          ]
-        }
-      else
-        assert{ @s.entries == [
-            ["\x00\x00\x00\x00\x00\x00\x00\x00"],
-            ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-            ["\x00\x00\x00\x01\x00\x00\x00\x00"],
-            ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-            ["\xff\xff\xff\xff\xff\xff\xff\xff"],
-          ]
-        }
-      end
+      assert{ @s.entries == [
+          ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
+          ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+          ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
+          ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+          ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+        ]
+      }
     end
 
     test '#fetch tinyint column' do
@@ -1802,96 +1774,94 @@ class TestMysql < Test::Unit::TestCase
     end
   end
 
-  if defined? Encoding
-    sub_test_case 'Connection charset is UTF-8:' do
-      setup do
-        @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-        @m.charset = "utf8"
-        @m.query "create temporary table t (utf8 char(10) charset utf8, cp932 char(10) charset cp932, eucjp char(10) charset eucjpms, bin varbinary(10))"
-        @utf8 = "いろは"
-        @cp932 = @utf8.encode "CP932"
-        @eucjp = @utf8.encode "EUC-JP-MS"
-        @bin = "\x00\x01\x7F\x80\xFE\xFF".force_encoding("ASCII-8BIT")
-        @default_internal = Encoding.default_internal
-      end
+  sub_test_case 'Connection charset is UTF-8:' do
+    setup do
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.charset = "utf8"
+      @m.query "create temporary table t (utf8 char(10) charset utf8, cp932 char(10) charset cp932, eucjp char(10) charset eucjpms, bin varbinary(10))"
+      @utf8 = "いろは"
+      @cp932 = @utf8.encode "CP932"
+      @eucjp = @utf8.encode "EUC-JP-MS"
+      @bin = "\x00\x01\x7F\x80\xFE\xFF".force_encoding("ASCII-8BIT")
+      @default_internal = Encoding.default_internal
+    end
 
-      teardown do
+    teardown do
+      v =  $VERBOSE
+      $VERBOSE = false
+      Encoding.default_internal = @default_internal
+      $VERBOSE = v
+    end
+
+    sub_test_case 'default_internal is CP932' do
+      setup do
+        @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
         v =  $VERBOSE
         $VERBOSE = false
-        Encoding.default_internal = @default_internal
+        Encoding.default_internal = 'CP932'
         $VERBOSE = v
       end
-
-      sub_test_case 'default_internal is CP932' do
-        setup do
-          @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
-          v =  $VERBOSE
-          $VERBOSE = false
-          Encoding.default_internal = 'CP932'
-          $VERBOSE = v
-        end
-        test 'is converted to CP932' do
-          assert @m.query('select "あいう"').fetch == ["\x82\xA0\x82\xA2\x82\xA4".force_encoding("CP932")]
-        end
-        test 'data is stored as is' do
-          assert @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF']
-        end
-        test 'By simple query, charset of retrieved data is connection charset' do
-          assert @m.query('select utf8,cp932,eucjp,bin from t').fetch == [@cp932, @cp932, @cp932, @bin]
-        end
-        test 'By prepared statement, charset of retrieved data is connection charset except for binary' do
-          assert @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch == [@cp932, @cp932, @cp932, @bin]
-        end
+      test 'is converted to CP932' do
+        assert @m.query('select "あいう"').fetch == ["\x82\xA0\x82\xA2\x82\xA4".force_encoding("CP932")]
       end
-
-      sub_test_case 'query with CP932 encoding' do
-        test 'is converted to UTF-8' do
-          assert @m.query('select HEX("あいう")'.encode("CP932")).fetch == ["E38182E38184E38186"]
-        end
+      test 'data is stored as is' do
+        assert @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF']
       end
-
-      sub_test_case 'prepared statement with CP932 encoding' do
-        test 'is converted to UTF-8' do
-          assert @m.prepare('select HEX("あいう")'.encode("CP932")).execute.fetch == ["E38182E38184E38186"]
-        end
+      test 'By simple query, charset of retrieved data is connection charset' do
+        assert @m.query('select utf8,cp932,eucjp,bin from t').fetch == [@cp932, @cp932, @cp932, @bin]
       end
-
-      sub_test_case 'The encoding of data are correspond to charset of column:' do
-        setup do
-          @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
-        end
-        test 'data is stored as is' do
-          assert{ @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF'] }
-        end
-        test 'By simple query, charset of retrieved data is connection charset' do
-          assert{ @m.query('select utf8,cp932,eucjp,bin from t').fetch == [@utf8, @utf8, @utf8, @bin] }
-        end
-        test 'By prepared statement, charset of retrieved data is connection charset except for binary' do
-          assert{ @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch == [@utf8, @utf8, @utf8, @bin] }
-        end
+      test 'By prepared statement, charset of retrieved data is connection charset except for binary' do
+        assert @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch == [@cp932, @cp932, @cp932, @bin]
       end
+    end
 
-      sub_test_case 'The encoding of data are different from charset of column:' do
-        setup do
-          @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @utf8, @utf8, @utf8
-        end
-        test 'stored data is converted' do
-          assert{ @m.query("select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t").fetch == ["E38184E3828DE381AF", "82A282EB82CD", "A4A4A4EDA4CF", "E38184E3828DE381AF"] }
-        end
-        test 'By simple query, charset of retrieved data is connection charset' do
-          assert{ @m.query("select utf8,cp932,eucjp,bin from t").fetch == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding('ASCII-8BIT')] }
-        end
-        test 'By prepared statement, charset of retrieved data is connection charset except for binary' do
-          assert{ @m.prepare("select utf8,cp932,eucjp,bin from t").execute.fetch == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding("ASCII-8BIT")] }
-        end
+    sub_test_case 'query with CP932 encoding' do
+      test 'is converted to UTF-8' do
+        assert @m.query('select HEX("あいう")'.encode("CP932")).fetch == ["E38182E38184E38186"]
       end
+    end
 
-      sub_test_case 'The data include invalid byte code:' do
-        test 'raises Encoding::InvalidByteSequenceError' do
-          cp932 = "\x01\xFF\x80".force_encoding("CP932")
-          assert_raise Encoding::InvalidByteSequenceError do
-            @m.prepare("insert into t (cp932) values (?)").execute cp932
-          end
+    sub_test_case 'prepared statement with CP932 encoding' do
+      test 'is converted to UTF-8' do
+        assert @m.prepare('select HEX("あいう")'.encode("CP932")).execute.fetch == ["E38182E38184E38186"]
+      end
+    end
+
+    sub_test_case 'The encoding of data are correspond to charset of column:' do
+      setup do
+        @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
+      end
+      test 'data is stored as is' do
+        assert{ @m.query('select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t').fetch == ['E38184E3828DE381AF', '82A282EB82CD', 'A4A4A4EDA4CF', '00017F80FEFF'] }
+      end
+      test 'By simple query, charset of retrieved data is connection charset' do
+        assert{ @m.query('select utf8,cp932,eucjp,bin from t').fetch == [@utf8, @utf8, @utf8, @bin] }
+      end
+      test 'By prepared statement, charset of retrieved data is connection charset except for binary' do
+        assert{ @m.prepare('select utf8,cp932,eucjp,bin from t').execute.fetch == [@utf8, @utf8, @utf8, @bin] }
+      end
+    end
+
+    sub_test_case 'The encoding of data are different from charset of column:' do
+      setup do
+        @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @utf8, @utf8, @utf8
+      end
+      test 'stored data is converted' do
+        assert{ @m.query("select hex(utf8),hex(cp932),hex(eucjp),hex(bin) from t").fetch == ["E38184E3828DE381AF", "82A282EB82CD", "A4A4A4EDA4CF", "E38184E3828DE381AF"] }
+      end
+      test 'By simple query, charset of retrieved data is connection charset' do
+        assert{ @m.query("select utf8,cp932,eucjp,bin from t").fetch == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding('ASCII-8BIT')] }
+      end
+      test 'By prepared statement, charset of retrieved data is connection charset except for binary' do
+        assert{ @m.prepare("select utf8,cp932,eucjp,bin from t").execute.fetch == [@utf8, @utf8, @utf8, @utf8.dup.force_encoding("ASCII-8BIT")] }
+      end
+    end
+
+    sub_test_case 'The data include invalid byte code:' do
+      test 'raises Encoding::InvalidByteSequenceError' do
+        cp932 = "\x01\xFF\x80".force_encoding("CP932")
+        assert_raise Encoding::InvalidByteSequenceError do
+          @m.prepare("insert into t (cp932) values (?)").execute cp932
         end
       end
     end
