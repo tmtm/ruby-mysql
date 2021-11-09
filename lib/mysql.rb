@@ -11,11 +11,11 @@
 #  end
 class Mysql
 
-  require "mysql/constants"
-  require "mysql/error"
-  require "mysql/charset"
-  require "mysql/protocol"
-  require "mysql/packet.rb"
+  require_relative "mysql/constants"
+  require_relative "mysql/error"
+  require_relative "mysql/charset"
+  require_relative "mysql/protocol"
+  require_relative "mysql/packet.rb"
 
   VERSION            = '3.0.0'             # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
