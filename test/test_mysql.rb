@@ -929,8 +929,8 @@ class TestMysql < Test::Unit::TestCase
       @s.prepare 'select * from t'
       @s.execute
       expect = [
-        [1, 'abc', Mysql::Time.new(1970,12,24,23,59,05)],
-        [2, 'def', Mysql::Time.new(2112,9,3,12,34,56)],
+        [1, 'abc', Time.new(1970,12,24,23,59,05)],
+        [2, 'def', Time.new(2112,9,3,12,34,56)],
         [3, '123', nil],
       ]
       @s.each do |a|
@@ -1253,14 +1253,11 @@ class TestMysql < Test::Unit::TestCase
       @s.prepare 'select i from t'
       @s.execute
       cols = @s.fetch
-      assert{ cols == [Mysql::Time.new] }
-      assert{ cols.first.to_s == '0000-00-00' }
+      assert{ cols == [nil] }
       cols = @s.fetch
-      assert{ cols == [Mysql::Time.new(1000,1,1)] }
-      assert{ cols.first.to_s == '1000-01-01' }
+      assert{ cols == [Time.new(1000,1,1)] }
       cols = @s.fetch
-      assert{ cols == [Mysql::Time.new(9999,12,31)] }
-      assert{ cols.first.to_s == '9999-12-31' }
+      assert{ cols == [Time.new(9999,12,31)] }
     end
 
     test '#fetch datetime column' do
@@ -1268,9 +1265,9 @@ class TestMysql < Test::Unit::TestCase
       @m.query "insert into t values ('0000-00-00 00:00:00'),('1000-01-01 00:00:00'),('9999-12-31 23:59:59')"
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch == [Mysql::Time.new] }
-      assert{ @s.fetch == [Mysql::Time.new(1000,1,1)] }
-      assert{ @s.fetch == [Mysql::Time.new(9999,12,31,23,59,59)] }
+      assert{ @s.fetch == [nil] }
+      assert{ @s.fetch == [Time.new(1000,1,1)] }
+      assert{ @s.fetch == [Time.new(9999,12,31,23,59,59)] }
     end
 
     test '#fetch timestamp column' do
@@ -1278,8 +1275,8 @@ class TestMysql < Test::Unit::TestCase
       @m.query("insert into t values ('1970-01-02 00:00:00'),('2037-12-30 23:59:59')")
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch == [Mysql::Time.new(1970,1,2)] }
-      assert{ @s.fetch == [Mysql::Time.new(2037,12,30,23,59,59)] }
+      assert{ @s.fetch == [Time.new(1970,1,2)] }
+      assert{ @s.fetch == [Time.new(2037,12,30,23,59,59)] }
     end
 
     test '#fetch time column' do
@@ -1287,9 +1284,9 @@ class TestMysql < Test::Unit::TestCase
       @m.query "insert into t values ('-838:59:59'),(0),('838:59:59')"
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch == [Mysql::Time.new(0,0,0,838,59,59,true)] }
-      assert{ @s.fetch == [Mysql::Time.new(0,0,0,0,0,0,false)] }
-      assert{ @s.fetch == [Mysql::Time.new(0,0,0,838,59,59,false)] }
+      assert{ @s.fetch == [-(838*3600+59*60+59)] }
+      assert{ @s.fetch == [0] }
+      assert{ @s.fetch == [838*3600+59*60+59] }
     end
 
     test '#fetch year column' do
@@ -1511,79 +1508,6 @@ class TestMysql < Test::Unit::TestCase
         @s.prepare 'hogehoge'
       end
       assert{ @s.sqlstate == '42000' }
-    end
-  end
-
-  sub_test_case 'Mysql::Time' do
-    setup do
-      @t = Mysql::Time.new
-    end
-
-    test '.new with no arguments returns 0' do
-      assert{ @t.year == 0 }
-      assert{ @t.month == 0 }
-      assert{ @t.day == 0 }
-      assert{ @t.hour == 0 }
-      assert{ @t.minute == 0 }
-      assert{ @t.second == 0 }
-      assert{ @t.neg == false }
-      assert{ @t.second_part == 0 }
-    end
-
-    test '#inspect' do
-      assert{ Mysql::Time.new(2009,12,8,23,35,21).inspect == '#<Mysql::Time:2009-12-08 23:35:21>' }
-    end
-
-    test '#to_s' do
-      assert{ Mysql::Time.new(2009,12,8,23,35,21).to_s == '2009-12-08 23:35:21' }
-    end
-
-    test '#to_i' do
-      assert{ Mysql::Time.new(2009,12,8,23,35,21).to_i == 20091208233521 }
-    end
-
-    test '#year' do
-      assert{ (@t.year = 2009) == 2009 }
-      assert{ @t.year == 2009 }
-    end
-
-    test '#month' do
-      assert{ (@t.month = 12) == 12 }
-      assert{ @t.month == 12 }
-    end
-
-    test '#day' do
-      assert{ (@t.day = 8) == 8 }
-      assert{ @t.day == 8 }
-    end
-
-    test '#hour' do
-      assert{ (@t.hour = 23) == 23 }
-      assert{ @t.hour == 23 }
-    end
-
-    test '#minute' do
-      assert{ (@t.minute = 35) == 35 }
-      assert{ @t.minute == 35 }
-    end
-
-    test '#second' do
-      assert{ (@t.second = 21) == 21 }
-      assert{ @t.second == 21 }
-    end
-
-    test '#neg' do
-      assert{ @t.neg == false }
-    end
-
-    test '#second_part' do
-      assert{ @t.second_part == 0 }
-    end
-
-    test '#==' do
-      t1 = Mysql::Time.new 2009,12,8,23,35,21
-      t2 = Mysql::Time.new 2009,12,8,23,35,21
-      assert{ t1 == t2 }
     end
   end
 

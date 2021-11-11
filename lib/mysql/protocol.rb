@@ -45,17 +45,18 @@ class Mysql
       when Field::TYPE_DATE
         len = pkt.utiny
         y, m, d = pkt.read(len).unpack("vCC")
-        t = Mysql::Time.new(y, m, d, nil, nil, nil)
+        t = Time.new(y, m, d) rescue nil
         return t
       when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
         len = pkt.utiny
         y, m, d, h, mi, s, sp = pkt.read(len).unpack("vCCCCCV")
-        return Mysql::Time.new(y, m, d, h, mi, s, false, sp)
+        return Time.new(y, m, d, h, mi, Rational((s.to_i*1000000+sp.to_i)/1000000)) rescue nil
       when Field::TYPE_TIME
         len = pkt.utiny
         sign, d, h, mi, s, sp = pkt.read(len).unpack("CVCCCV")
-        h = d.to_i * 24 + h.to_i
-        return Mysql::Time.new(0, 0, 0, h, mi, s, sign!=0, sp)
+        r = d.to_i*86400 + h.to_i*3600 + mi.to_i*60 + s.to_i + sp.to_f/1000000
+        r *= -1 if sign != 0
+        return r
       when Field::TYPE_YEAR
         return pkt.ushort
       when Field::TYPE_BIT
@@ -97,12 +98,9 @@ class Mysql
       when String
         type = Field::TYPE_STRING
         val = Packet.lcs(v)
-      when ::Time
+      when Time
         type = Field::TYPE_DATETIME
         val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, v.usec].pack("CvCCCCCV")
-      when Mysql::Time
-        type = Field::TYPE_DATETIME
-        val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, v.second_part].pack("CvCCCCCV")
       else
         raise ProtocolError, "class #{v.class} is not supported"
       end
@@ -546,9 +544,9 @@ class Mysql
     def read_timeout(len, timeout)
       return @socket.read(len) if timeout.nil? || timeout == 0
       result = ''
-      e = ::Time.now + timeout
+      e = Time.now + timeout
       while result.size < len
-        now = ::Time.now
+        now = Time.now
         raise Errno::ETIMEDOUT if now > e
         r = @socket.read_nonblock(len - result.size, exception: false)
         case r
@@ -593,9 +591,9 @@ class Mysql
     def write_timeout(data, timeout)
       return @socket.write(data) if timeout.nil? || timeout == 0
       len = 0
-      e = ::Time.now + timeout
+      e = Time.now + timeout
       while len < data.size
-        now = ::Time.now
+        now = Time.now
         raise Errno::ETIMEDOUT if now > e
         l = @socket.write_nonblock(data[len..-1], exception: false)
         case l
@@ -851,7 +849,7 @@ class Mysql
         else
           unsigned = f.flags & Field::UNSIGNED_FLAG != 0
           v = Protocol.net2value(@packet, f.type, unsigned)
-          if v.is_a? Numeric or v.is_a? Mysql::Time
+          if v.nil? or v.is_a? Numeric or v.is_a? Time
             v
           elsif f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
             Charset.to_binary(v)
