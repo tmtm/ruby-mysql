@@ -825,7 +825,6 @@ class Mysql
       @affected_rows = @insert_id = @server_status = @warning_count = 0
       @sqlstate = "00000"
       @param_count = nil
-      @bind_result = nil
     end
 
     # @private
@@ -881,46 +880,7 @@ class Mysql
 
     # @return [Array] current record data
     def fetch
-      row = @result.fetch
-      return row unless @bind_result
-      row.zip(@bind_result).map do |col, type|
-        if col.nil?
-          nil
-        elsif [Numeric, Integer].include? type
-          col.to_i
-        elsif type == String
-          col.to_s
-        elsif type == Float && !col.is_a?(Float)
-          col.to_i.to_f
-        elsif type == Mysql::Time && !col.is_a?(Mysql::Time)
-          if col.to_s =~ /\A\d+\z/
-            i = col.to_s.to_i
-            if i < 100000000
-              y = i/10000
-              m = i/100%100
-              d = i%100
-              h, mm, s = 0
-            else
-              y = i/10000000000
-              m = i/100000000%100
-              d = i/1000000%100
-              h = i/10000%100
-              mm= i/100%100
-              s = i%100
-            end
-            if y < 70
-              y += 2000
-            elsif y < 100
-              y += 1900
-            end
-            Mysql::Time.new(y, m, d, h, mm, s)
-          else
-            Mysql::Time.new
-          end
-        else
-          col
-        end
-      end
+      @result.fetch
     end
 
     # Return data of current record as Hash.
@@ -929,20 +889,6 @@ class Mysql
     # @return [Hash] record data
     def fetch_hash(with_table=nil)
       @result.fetch_hash with_table
-    end
-
-    # Set retrieve type of value
-    # @param [Numeric / Fixnum / Integer / Float / String / Mysql::Time / nil] args value type
-    # @return [Mysql::Stmt] self
-    def bind_result(*args)
-      if @fields.length != args.length
-        raise ClientError, "bind_result: result value count(#{@fields.length}) != number of argument(#{args.length})"
-      end
-      args.each do |a|
-        raise TypeError unless [Numeric, Integer, Float, String, Mysql::Time, nil].include? a
-      end
-      @bind_result = args
-      self
     end
 
     # Iterate block with record.

@@ -905,62 +905,6 @@ class TestMysql < Test::Unit::TestCase
       assert{ @s.affected_rows == 3 }
     end
 
-    sub_test_case '#bind_result' do
-      setup do
-        @m.query 'create temporary table t (i int, c char(10), d double, t datetime)'
-        @m.query 'insert into t values (123,"9abcdefg",1.2345,20091208100446)'
-        @s.prepare 'select * from t'
-      end
-
-      test '(nil) make result format to be standard value' do
-        @s.bind_result nil, nil, nil, nil
-        @s.execute
-        assert{ @s.fetch == [123, '9abcdefg', 1.2345, Mysql::Time.new(2009,12,8,10,4,46)] }
-      end
-
-      test '(Numeric) make result format to be Integer value' do
-        @s.bind_result Numeric, Numeric, Numeric, Numeric
-        @s.execute
-        assert{ @s.fetch == [123, 9, 1, 20091208100446] }
-      end
-
-      test '(Integer) make result format to be Integer value' do
-        @s.bind_result Integer, Integer, Integer, Integer
-        @s.execute
-        assert{ @s.fetch == [123, 9, 1, 20091208100446] }
-      end
-
-      test '(String) make result format to be String value' do
-        @s.bind_result String, String, String, String
-        @s.execute
-        assert{ @s.fetch == ["123", "9abcdefg", "1.2345", "2009-12-08 10:04:46"] }
-      end
-
-      test '(Float) make result format to be Float value' do
-        @s.bind_result Float, Float, Float, Float
-        @s.execute
-        assert{ @s.fetch == [123.0, 9.0, 1.2345 , 20091208100446.0] }
-      end
-
-      test '(Mysql::Time) make result format to be Mysql::Time value' do
-        @s.bind_result Mysql::Time, Mysql::Time, Mysql::Time, Mysql::Time
-        @s.execute
-        assert{ @s.fetch == [Mysql::Time.new(2000,1,23), Mysql::Time.new, Mysql::Time.new, Mysql::Time.new(2009,12,8,10,4,46)] }
-      end
-
-      test '(invalid) raises error' do
-        assert_raise TypeError do
-          @s.bind_result(Time, nil, nil, nil)
-        end
-      end
-
-      test 'with mismatch argument count raise error' do
-        assert_raise Mysql::ClientError, 'bind_result: result value count(4) != number of argument(1)' do
-          @s.bind_result(nil)
-        end
-      end
-    end
-
     test '#close returns nil' do
       assert{ @s.close == nil }
     end
