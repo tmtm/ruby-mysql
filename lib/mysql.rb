@@ -291,14 +291,6 @@ class Mysql
     self
   end
 
-  # database list.
-  # @param [String] db database name that may contain wild card.
-  # @return [Array<String>] database list
-  def list_dbs(db=nil)
-    db &&= db.gsub(/[\\\']/){"\\#{$&}"}
-    query(db ? "show databases like '#{db}'" : "show databases").map(&:first)
-  end
-
   # Execute query string.
   # @param [String] str Query.
   # @yield [Mysql::Result] evaluated per query.
@@ -400,38 +392,6 @@ class Mysql
   # @return [Mysql::Stmt] If block is not specified.
   def stmt
     Stmt.new @protocol
-  end
-
-  # Returns Mysql::Result object that is empty.
-  # Use fetch_fields to get list of fields.
-  # @param [String] table table name.
-  # @param [String] field field name that may contain wild card.
-  # @return [Mysql::Result]
-  def list_fields(table, field=nil)
-    check_connection
-    begin
-      fields = @protocol.field_list_command table, field
-      return Result.new fields
-    rescue ServerError => e
-      @last_error = e
-      @sqlstate = e.sqlstate
-      raise
-    end
-  end
-
-  # @return [Mysql::Result] containing process list
-  def list_processes
-    check_connection
-    @fields = @protocol.process_info_command
-    @result_exist = true
-    store_result
-  end
-
-  # @param [String] table database name that may contain wild card.
-  # @return [Array<String>] list of table name.
-  def list_tables(table=nil)
-    q = table ? "show tables like '#{quote table}'" : "show tables"
-    query(q).map(&:first)
   end
 
   # Check whether the  connection is available.

@@ -323,43 +323,6 @@ class Mysql
       end
     end
 
-    # Field list command
-    # === Argument
-    # table :: [String] table name.
-    # field :: [String / nil] field name that may contain wild card.
-    # === Return
-    # [Array of Field] field list
-    def field_list_command(table, field)
-      synchronize do
-        reset
-        write [COM_FIELD_LIST, table, 0, field].pack("Ca*Ca*")
-        fields = []
-        until (data = read).eof?
-          fields.push Field.new(FieldPacket.parse(data))
-        end
-        return fields
-      end
-    end
-
-    # Process info command
-    # === Return
-    # [Array of Field] field list
-    def process_info_command
-      check_state :READY
-      begin
-        reset
-        write [COM_PROCESS_INFO].pack("C")
-        field_count = read.lcb
-        fields = field_count.times.map{Field.new FieldPacket.parse(read)}
-        read_eof_packet
-        set_state :RESULT
-        return fields
-      rescue
-        set_state :READY
-        raise
-      end
-    end
-
     # Ping command
     def ping_command
       simple_command [COM_PING].pack("C")

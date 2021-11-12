@@ -366,61 +366,6 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
-    sub_test_case '#list_dbs' do
-      test 'returns database list' do
-        ret = @m.list_dbs
-        assert{ ret.kind_of? Array }
-        assert{ ret.include? MYSQL_DATABASE }
-      end
-      test 'with pattern returns databases that matches pattern' do
-        assert{ @m.list_dbs('info%').include? 'information_schema' }
-      end
-    end
-
-    sub_test_case '#list_fields' do
-      setup do
-        @m.query 'create temporary table t (i int, c char(10), d date)'
-      end
-      test 'returns result set that contains information of fields' do
-        ret = @m.list_fields('t')
-        assert{ ret.kind_of? Mysql::Result }
-        assert{ ret.num_rows == 0 }
-        assert{ ret.fetch_fields.map{|f|f.name} == ['i','c','d'] }
-      end
-      test 'with pattern returns result set that contains information of fields that matches pattern' do
-        ret = @m.list_fields('t', 'i')
-        assert{ ret.kind_of? Mysql::Result }
-        assert{ ret.num_rows == 0 }
-        ret.fetch_fields.map{|f|f.name} == ['i']
-      end
-    end
-
-    sub_test_case '#list_processes' do
-      test 'returns result set that contains information of all connections' do
-        ret = @m.list_processes
-        assert{ ret.kind_of? Mysql::Result }
-        assert{ ret.find{|r|r[0].to_i == @m.thread_id}[4] == "Processlist" }
-      end
-    end
-
-    sub_test_case '#list_tables' do
-      setup do
-        @m.query 'create table test_mysql_list_tables (id int)'
-      end
-      teardown do
-        @m.query 'drop table if exists test_mysql_list_tables'
-      end
-      test 'returns table list' do
-        ret = @m.list_tables
-        assert{ ret.kind_of? Array }
-        assert{ ret.include? 'test_mysql_list_tables' }
-      end
-      test 'with pattern returns lists that matches pattern' do
-        ret = @m.list_tables '%mysql\_list\_t%'
-        assert{ ret.include? 'test_mysql_list_tables' }
-      end
-    end
-
     sub_test_case '#ping' do
       test 'returns self' do
         assert{ @m.ping == @m }
@@ -850,10 +795,6 @@ class TestMysql < Test::Unit::TestCase
 
     test '#def for result set is null' do
       assert{ @res.fetch_field.def == nil }
-    end
-
-    test '#def for field information is default value' do
-      assert{ @m.list_fields('t').fetch_field.def == '0' }
     end
 
     test '#type is type of field as Integer' do
