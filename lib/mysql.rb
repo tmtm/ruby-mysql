@@ -2,6 +2,8 @@
 # Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
+require 'uri'
+
 # MySQL connection class.
 # @example
 #  my = Mysql.connect('hostname', 'user', 'password', 'dbname')
@@ -21,8 +23,25 @@ class Mysql
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
-  # @return [Mysql::Charset] character set of MySQL connection
-  attr_reader :charset
+  DEFAULT_OPTS = {
+    host: nil,
+    username: nil,
+    password: nil,
+    database: nil,
+    port: nil,
+    socket: nil,
+    flags: 0,
+    charset: nil,
+    connect_timeout: nil,
+    read_timeout: nil,
+    write_timeout: nil,
+    init_command: nil,
+    local_infile: nil,
+    load_data_local_dir: nil,
+    ssl_mode: SSL_MODE_PREFERRED,
+    get_server_public_key: false,
+  }.freeze
+
   # @private
   attr_reader :protocol
 
@@ -30,23 +49,12 @@ class Mysql
   attr_accessor :query_with_result
 
   class << self
-    # Make Mysql object without connecting.
-    # @return [Mysql]
-    def init
-      my = self.allocate
-      my.instance_eval{initialize}
-      my
-    end
-
     # Make Mysql object and connect to mysqld.
-    # @param args same as arguments for {#connect}.
+    # parameter is same as arguments for {#initialize}.
     # @return [Mysql]
-    def new(*args)
-      my = self.init
-      my.connect(*args)
+    def connect(*args, **opts)
+      self.new(*args, **opts).connect
     end
-
-    alias connect new
 
     # Escape special character in string.
     # @param [String] str
@@ -65,46 +73,105 @@ class Mysql
     alias quote escape_string
   end
 
-  def initialize
+  # @overload initialize(uri, **opts)
+  #   @param uri [String, URI] "mysql://username:password@host:port/database?param=value&..." / "mysql://username:password@%2Ftmp%2Fmysql.sock/database" / "mysql://username:password@/database?socket=/tmp/mysql.sock"
+  # @overload initialize(host, username, password, database, port, socket, flags, **opts)
+  # @overload initialize(host: nil, username: nil, password: nil, database: nil, port: nil, socket: nil, flags: nil, **opts)
+  #   @param host [String] hostname mysqld running
+  #   @param username [String] username to connect to mysqld
+  #   @param password [String] password to connect to mysqld
+  #   @param database [String] initial database name
+  #   @param port [String] port number (used if host is not 'localhost' or nil)
+  #   @param socket [String] socket filename (used if host is 'localhost' or nil)
+  #   @param flags [Integer] connection flag. Mysql::CLIENT_* ORed
+  #   @param opts [Hash] options
+  #   @option :host [String] hostname mysqld running
+  #   @option :username [String] username to connect to mysqld
+  #   @option :password [String] password to connect to mysqld
+  #   @option :database [String] initial database name
+  #   @option :port [String] port number (used if host is not 'localhost' or nil)
+  #   @option :socket [String] socket filename (used if host is 'localhost' or nil)
+  #   @option :flags [Integer] connection flag. Mysql::CLIENT_* ORed
+  #   @option :charset [Mysql::Charset, String] character set
+  #   @option :connect_timeout [Numeric, nil]
+  #   @option :read_timeout [Numeric, nil]
+  #   @option :write_timeout [Numeric, nil]
+  #   @option :local_infile [Boolean]
+  #   @option :load_data_local_dir [String]
+  #   @option :ssl_mode [Integer]
+  #   @option :get_server_public_key [Boolean]
+  def initialize(*args, **opts)
     @fields = nil
     @protocol = nil
-    @charset = nil
-    @init_command = nil
     @sqlstate = "00000"
     @query_with_result = true
     @host_info = nil
     @last_error = nil
     @result_exist = false
-    @opts = {
-      connect_timeout: nil,
-      read_timeout: nil,
-      write_timeout: nil,
-      local_infile: nil,
-      ssl_mode: SSL_MODE_PREFERRED,
-      get_server_public_key: false,
-    }
+    @opts = DEFAULT_OPTS.dup
+    parse_args(args, opts)
   end
 
   # Connect to mysqld.
-  # @param [String / nil] host hostname mysqld running
-  # @param [String / nil] user username to connect to mysqld
-  # @param [String / nil] passwd password to connect to mysqld
-  # @param [String / nil] db initial database name
-  # @param [Integer / nil] port port number (used if host is not 'localhost' or nil)
-  # @param [String / nil] socket socket file name (used if host is 'localhost' or nil)
-  # @param [Integer / nil] flag connection flag. Mysql::CLIENT_* ORed
-  # @return self
-  def connect(host=nil, user=nil, passwd=nil, db=nil, port=nil, socket=nil, flag=0)
-    if flag & CLIENT_COMPRESS != 0
+  # parameter is same as arguments for {#initialize}.
+  # @return [Mysql] self
+  def connect(*args, **opts)
+    parse_args(args, opts)
+    if @opts[:flags] & CLIENT_COMPRESS != 0
       warn 'unsupported flag: CLIENT_COMPRESS' if $VERBOSE
-      flag &= ~CLIENT_COMPRESS
+      @opts[:flags] &= ~CLIENT_COMPRESS
     end
-    @protocol = Protocol.new(host, port, socket, @opts)
-    @protocol.authenticate user, passwd.to_s, db, flag, @charset
-    @charset ||= @protocol.charset
-    @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
-    query @init_command if @init_command
+    @protocol = Protocol.new(@opts)
+    @protocol.authenticate
+    @host_info = (@opts[:host].nil? || @opts[:host] == "localhost") ? 'Localhost via UNIX socket' : "#{@opts[:host]} via TCP/IP"
+    query @opts[:init_command] if @opts[:init_command]
     return self
+  end
+
+  def parse_args(args, opts)
+    case args[0]
+    when URI
+      uri = args[0]
+    when /\Amysql:\/\//
+      uri = URI.parse(args[0])
+    when String
+      @opts[:host], user, passwd, dbname, port, socket, flags = *args
+      @opts[:username] = user if user
+      @opts[:password] = passwd if passwd
+      @opts[:database] = dbname if dbname
+      @opts[:port] = port if port
+      @opts[:socket] = socket if socket
+      @opts[:flags] = flags if flags
+    when Hash
+      # skip
+    when nil
+      # skip
+    end
+    if uri
+      host = uri.hostname.to_s
+      host = URI.decode_www_form_component(host)
+      if host.start_with?('/')
+        @opts[:socket] = host
+        host = ''
+      end
+      @opts[:host] = host
+      @opts[:username] = URI.decode_www_form_component(uri.user.to_s)
+      @opts[:password] = URI.decode_www_form_component(uri.password.to_s)
+      @opts[:database] = uri.path.sub(/\A\/+/, '')
+      @opts[:port] = uri.port
+      opts = URI.decode_www_form(uri.query).to_h.transform_keys(&:intern).merge(opts) if uri.query
+      opts[:flags] = opts[:flags].to_i if opts[:flags]
+    end
+    if args.last.kind_of? Hash
+      opts = opts.merge(args.last)
+    end
+    @opts.update(opts)
+  end
+
+  DEFAULT_OPTS.each_key do |var|
+    next if var == :charset
+    define_method(var){@opts[var]}
+    define_method("#{var}="){|val| @opts[var] = val}
   end
 
   # Disconnect from mysql.
@@ -127,77 +194,6 @@ class Mysql
     return self
   end
 
-  # Set option for connection.
-  #
-  # Available options:
-  #   Mysql::INIT_COMMAND, Mysql::OPT_CONNECT_TIMEOUT, Mysql::OPT_GET_SERVER_PUBLIC_KEY,
-  #   Mysql::OPT_LOAD_DATA_LOCAL_DIR, Mysql::OPT_LOCAL_INFILE, Mysql::OPT_READ_TIMEOUT,
-  #   Mysql::OPT_SSL_MODE, Mysql::OPT_WRITE_TIMEOUT, Mysql::SET_CHARSET_NAME
-  # @param [Integer] opt option
-  # @param [Integer] value option value that is depend on opt
-  # @return [Mysql] self
-  def options(opt, value=nil)
-    case opt
-#    when Mysql::DEFAULT_AUTH
-#    when Mysql::ENABLE_CLEARTEXT_PLUGIN
-    when Mysql::INIT_COMMAND
-      @init_command = value.to_s
-#    when Mysql::OPT_BIND
-#    when Mysql::OPT_CAN_HANDLE_EXPIRED_PASSWORDS
-#    when Mysql::OPT_COMPRESS
-#    when Mysql::OPT_COMPRESSION_ALGORITHMS
-#    when Mysql::OPT_CONNECT_ATTR_ADD
-#    when Mysql::OPT_CONNECT_ATTR_DELETE
-#    when Mysql::OPT_CONNECT_ATTR_RESET
-    when Mysql::OPT_CONNECT_TIMEOUT
-      @opts[:connect_timeout] = value
-    when Mysql::OPT_GET_SERVER_PUBLIC_KEY
-      @opts[:get_server_public_key] = value
-    when Mysql::OPT_LOAD_DATA_LOCAL_DIR
-      @opts[:local_infile] = value
-    when Mysql::OPT_LOCAL_INFILE
-      @opts[:local_infile] = value ? '' : nil
-#    when Mysql::OPT_MAX_ALLOWED_PACKET
-#    when Mysql::OPT_NAMED_PIPE
-#    when Mysql::OPT_NET_BUFFER_LENGTH
-#    when Mysql::OPT_OPTIONAL_RESULTSET_METADATA
-#    when Mysql::OPT_PROTOCOL
-    when Mysql::OPT_READ_TIMEOUT
-      @opts[:read_timeout] = value
-#    when Mysql::OPT_RECONNECT
-#    when Mysql::OPT_RETRY_COUNT
-#    when Mysql::SET_CLIENT_IP
-#    when Mysql::OPT_SSL_CA
-#    when Mysql::OPT_SSL_CAPATH
-#    when Mysql::OPT_SSL_CERT
-#    when Mysql::OPT_SSL_CIPHER
-#    when Mysql::OPT_SSL_CRL
-#    when Mysql::OPT_SSL_CRLPATH
-#    when Mysql::OPT_SSL_FIPS_MODE
-#    when Mysql::OPT_SSL_KEY
-    when Mysql::OPT_SSL_MODE
-      @opts[:ssl_mode] = value
-#    when Mysql::OPT_TLS_CIPHERSUITES
-#    when Mysql::OPT_TLS_VERSION
-#    when Mysql::OPT_USE_RESULT
-    when Mysql::OPT_WRITE_TIMEOUT
-      @opts[:write_timeout] = value
-#    when Mysql::OPT_ZSTD_COMPRESSION_LEVEL
-#    when Mysql::PLUGIN_DIR
-#    when Mysql::READ_DEFAULT_FILE
-#    when Mysql::READ_DEFAULT_GROUP
-#    when Mysql::REPORT_DATA_TRUNCATION
-#    when Mysql::SERVER_PUBLIC_KEY
-#    when Mysql::SET_CHARSET_DIR
-    when Mysql::SET_CHARSET_NAME
-      @charset = Charset.by_name value.to_s
-#    when Mysql::SHARED_MEMORY_BASE_NAME
-    else
-      warn "option not implemented: #{opt}" if $VERBOSE
-    end
-    self
-  end
-
   # Escape special character in MySQL.
   #
   # @param [String] str
@@ -207,6 +203,11 @@ class Mysql
   end
   alias quote escape_string
 
+  # @return [Mysql::Charset] character set of MySQL connection
+  def charset
+    @opts[:charset]
+  end
+
   # Set charset of MySQL connection.
   # @param [String / Mysql::Charset] cs
   def charset=(cs)
@@ -215,13 +216,13 @@ class Mysql
       @protocol.charset = charset
       query "SET NAMES #{charset.name}"
     end
-    @charset = charset
+    @opts[:charset] = charset
     cs
   end
 
   # @return [String] charset name
   def character_set_name
-    @charset.name
+    @protocol.charset.name
   end
 
   # @return [Integer] last error number
@@ -389,7 +390,7 @@ class Mysql
   # @param [String] str query string
   # @return [Mysql::Stmt] Prepared-statement object
   def prepare(str)
-    st = Stmt.new @protocol, @charset
+    st = Stmt.new @protocol
     st.prepare str
     st
   end
@@ -397,8 +398,8 @@ class Mysql
   # @private
   # Make empty prepared-statement object.
   # @return [Mysql::Stmt] If block is not specified.
-  def stmt_init
-    Stmt.new @protocol, @charset
+  def stmt
+    Stmt.new @protocol
   end
 
   # Returns Mysql::Result object that is empty.
@@ -543,7 +544,7 @@ class Mysql
     end
 
     # @return [Hash] field information
-    def hash
+    def to_hash
       {
         "name"       => @name,
         "table"      => @table,
@@ -779,10 +780,9 @@ class Mysql
     # @private
     # @param [Array<Mysql::Field>] fields
     # @param [Mysql::Protocol] protocol
-    # @param [Mysql::Charset] charset
-    def initialize(fields, protocol, charset)
+    def initialize(fields, protocol)
       super fields
-      @records = protocol.stmt_retr_all_records @fields, charset
+      @records = protocol.stmt_retr_all_records @fields, protocol.charset
     end
   end
 
@@ -817,10 +817,8 @@ class Mysql
 
     # @private
     # @param [Mysql::Protocol] protocol
-    # @param [Mysql::Charset] charset
-    def initialize(protocol, charset)
+    def initialize(protocol)
       @protocol = protocol
-      @charset = charset
       @statement_id = nil
       @affected_rows = @insert_id = @server_status = @warning_count = 0
       @sqlstate = "00000"
@@ -851,13 +849,13 @@ class Mysql
     def execute(*values)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count
-      values = values.map{|v| @charset.convert v}
+      values = values.map{|v| @protocol.charset.convert v}
       begin
         @sqlstate = "00000"
         nfields = @protocol.stmt_execute_command @statement_id, values
         if nfields
           @fields = @protocol.retr_fields nfields
-          @result = StatementResult.new @fields, @protocol, @charset
+          @result = StatementResult.new @fields, @protocol
         else
           @affected_rows, @insert_id, @server_status, @warning_count, @info =
             @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message

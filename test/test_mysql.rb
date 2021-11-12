@@ -24,9 +24,71 @@ class TestMysql < Test::Unit::TestCase
     end
   end
 
-  sub_test_case 'Mysql.init' do
+  sub_test_case 'Mysql.new' do
     test 'returns Mysql object' do
-      assert{ Mysql.init.kind_of? Mysql }
+      assert{ Mysql.new.kind_of? Mysql }
+    end
+  end
+
+  sub_test_case 'arguments' do
+    test 'with fixed arguments' do
+      @m = Mysql.new('127.0.0.1', 'hoge', 'abc&def', 'test', 3306, '/tmp/socket', 12345)
+      assert{ @m.host == '127.0.0.1' }
+      assert{ @m.username == 'hoge' }
+      assert{ @m.password == 'abc&def' }
+      assert{ @m.database == 'test' }
+      assert{ @m.port == 3306 }
+      assert{ @m.socket == '/tmp/socket' }
+      assert{ @m.flags == 12345 }
+    end
+
+    test 'with keyword arguments' do
+      @m = Mysql.new(host: '127.0.0.1', username: 'hoge', password: 'abc&def', database: 'test', port: 3306, socket: '/tmp/socket', flags: 12345)
+      assert{ @m.host == '127.0.0.1' }
+      assert{ @m.username == 'hoge' }
+      assert{ @m.password == 'abc&def' }
+      assert{ @m.database == 'test' }
+      assert{ @m.port == 3306 }
+      assert{ @m.socket == '/tmp/socket' }
+      assert{ @m.flags == 12345 }
+    end
+
+    test 'with URI' do
+      uri = URI.parse("mysql://hoge:abc%26def@127.0.0.1:3306/test?socket=/tmp/socket&flags=12345")
+      @m = Mysql.new(uri)
+      assert{ @m.host == '127.0.0.1' }
+      assert{ @m.username == 'hoge' }
+      assert{ @m.password == 'abc&def' }
+      assert{ @m.database == 'test' }
+      assert{ @m.port == 3306 }
+      assert{ @m.socket == '/tmp/socket' }
+      assert{ @m.flags == 12345 }
+    end
+
+    test 'with URI string' do
+      @m = Mysql.new("mysql://hoge:abc%26def@127.0.0.1:3306/test?socket=/tmp/socket&flags=12345")
+      assert{ @m.host == '127.0.0.1' }
+      assert{ @m.username == 'hoge' }
+      assert{ @m.password == 'abc&def' }
+      assert{ @m.database == 'test' }
+      assert{ @m.port == 3306 }
+      assert{ @m.socket == '/tmp/socket' }
+      assert{ @m.flags == 12345 }
+    end
+
+    test 'with URI string: host is filename' do
+      @m = Mysql.new("mysql://hoge:abc%26def@%2Ftmp%2Fsocket:3306/test?flags=12345")
+      assert{ @m.host == '' }
+      assert{ @m.username == 'hoge' }
+      assert{ @m.password == 'abc&def' }
+      assert{ @m.database == 'test' }
+      assert{ @m.port == 3306 }
+      assert{ @m.socket == '/tmp/socket' }
+      assert{ @m.flags == 12345 }
+    end
+
+    teardown do
+      @m.close if @m
     end
   end
 
@@ -49,16 +111,6 @@ class TestMysql < Test::Unit::TestCase
     end
   end
 
-  sub_test_case 'Mysql.new' do
-    test 'connect to mysqld' do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-      assert{ @m.kind_of? Mysql }
-    end
-    teardown do
-      @m.close if @m
-    end
-  end
-
   sub_test_case 'Mysql.escape_string' do
     test 'escape special character' do
       assert{ Mysql.escape_string("abc'def\"ghi\0jkl%mno") == "abc\\'def\\\"ghi\\0jkl%mno" }
@@ -73,28 +125,39 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'Mysql#connect' do
     test 'connect to mysqld' do
-      @m = Mysql.init
-      assert{ @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET) == @m }
+      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      assert{ @m.connect == @m }
     end
+
+    test 'connect to mysqld by URI' do
+      @m = Mysql.new("mysql://#{MYSQL_USER}:#{MYSQL_PASSWORD}@#{MYSQL_SERVER}:#{MYSQL_PORT}/#{MYSQL_DATABASE}?socket=#{MYSQL_SOCKET}")
+      assert{ @m.connect == @m }
+    end
+
+    test 'overrides arguments of new method' do
+      @m = Mysql.new('example.com', 12345)
+      @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    end
+
     teardown do
       @m.close if @m
     end
   end
 
-  sub_test_case 'Mysql#options' do
+  sub_test_case 'options' do
     setup do
-      @m = Mysql.init
+      @m = Mysql.new
     end
     teardown do
       @m.close
     end
-    test 'INIT_COMMAND: execute query when connecting' do
-      assert{ @m.options(Mysql::INIT_COMMAND, "SET AUTOCOMMIT=0") == @m }
+    test 'init_command: execute query when connecting' do
+      @m.init_command = "SET AUTOCOMMIT=0"
       assert{ @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET) == @m }
       assert{ @m.query('select @@AUTOCOMMIT').fetch_row == ["0"] }
     end
-    test 'OPT_CONNECT_TIMEOUT: set timeout for connecting' do
-      assert{ @m.options(Mysql::OPT_CONNECT_TIMEOUT, 0.1) == @m }
+    test 'connect_timeout: set timeout for connecting' do
+      @m.connect_timeout = 0.1
       stub(Socket).tcp{ raise Errno::ETIMEDOUT }
       stub(Socket).unix{ raise Errno::ETIMEDOUT }
       assert_raise Mysql::ClientError, 'connection timeout' do
@@ -104,41 +167,41 @@ class TestMysql < Test::Unit::TestCase
         @m.connect
       end
     end
-    test 'OPT_LOCAL_INFILE: client can execute LOAD DATA LOCAL INFILE query' do
+    test 'local_infile: client can execute LOAD DATA LOCAL INFILE query' do
       require 'tempfile'
       tmpf = Tempfile.new 'mysql_spec'
       tmpf.puts "123\tabc\n"
       tmpf.close
-      assert{ @m.options(Mysql::OPT_LOCAL_INFILE, true) == @m }
+      @m.local_infile = true
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
       assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
     end
-    test 'OPT_LOAD_DATA_LOCAL_DIR: client can execute LOAD DATA LOCAL INFILE query with specified directory' do
+    test 'load_data_local_dir: client can execute LOAD DATA LOCAL INFILE query with specified directory' do
       require 'tempfile'
       tmpf = Tempfile.new 'mysql_spec'
       tmpf.puts "123\tabc\n"
       tmpf.close
-      assert{ @m.options(Mysql::OPT_LOAD_DATA_LOCAL_DIR, File.dirname(tmpf.path)) == @m }
+      @m.load_data_local_dir = File.dirname(tmpf.path)
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
       assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
     end
-    test 'OPT_LOAD_DATA_LOCAL_DIR: client cannot execute LOAD DATA LOCAL INFILE query without specified directory' do
+    test 'load_data_local_dir: client cannot execute LOAD DATA LOCAL INFILE query without specified directory' do
       require 'tempfile'
       tmpf = Tempfile.new 'mysql_spec'
       tmpf.puts "123\tabc\n"
       tmpf.close
-      assert{ @m.options(Mysql::OPT_LOAD_DATA_LOCAL_DIR, '/hoge') == @m }
+      @m.load_data_local_dir = '/hoge'
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query('create temporary table t (i int, c char(10))')
       assert_raise Mysql::ClientError::LoadDataLocalInfileRejected, 'LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.' do
         @m.query("load data local infile '#{tmpf.path}' into table t")
       end
     end
-    test 'without OPT_LOCAL_INFILE and OPT_LOAD_DATA_LOCAL_DIR: client cannot execute LOAD DATA LOCAL INFILE query' do
+    test 'without local_infile and load_data_local_dir: client cannot execute LOAD DATA LOCAL INFILE query' do
       require 'tempfile'
       tmpf = Tempfile.new 'mysql_spec'
       tmpf.puts "123\tabc\n"
@@ -155,18 +218,18 @@ class TestMysql < Test::Unit::TestCase
         end
       end
     end
-    test 'OPT_READ_TIMEOUT: set timeout for reading packet' do
-      assert{ @m.options(Mysql::OPT_READ_TIMEOUT, 1) == @m }
+    test 'read_timeout: set timeout for reading packet' do
+      @m.read_timeout = 1
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query("select 123").entries
     end
-    test 'OPT_WRITE_TIMEOUT: set timeout for writing packet' do
-      assert{ @m.options(Mysql::OPT_WRITE_TIMEOUT, 1) == @m }
+    test 'write_timeout: set timeout for writing packet' do
+      @m.write_timeout = 1
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query("select 123").entries
     end
-    test 'SET_CHARSET_NAME: set charset for connection' do
-      assert{ @m.options(Mysql::SET_CHARSET_NAME, 'utf8mb3') == @m }
+    test 'charset: set charset for connection' do
+      @m.charset = 'utf8mb3'
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       assert do
         @m.query('select @@character_set_connection').fetch_row == ['utf8mb3'] ||
@@ -177,7 +240,7 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'Mysql' do
     setup do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     end
 
     teardown do
@@ -207,8 +270,8 @@ class TestMysql < Test::Unit::TestCase
 
     sub_test_case '#character_set_name' do
       test 'returns charset name' do
-        m = Mysql.init
-        m.options Mysql::SET_CHARSET_NAME, 'cp932'
+        m = Mysql.new
+        m.charset = 'cp932'
         m.connect MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET
         assert{ m.character_set_name == 'cp932' }
       end
@@ -293,7 +356,7 @@ class TestMysql < Test::Unit::TestCase
 
     sub_test_case '#kill' do
       setup do
-        @m2 = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+        @m2 = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       end
       teardown do
         @m2.close rescue nil
@@ -572,7 +635,7 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'multiple statement query:' do
     setup do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
       @res = @m.query 'select 1,2; select 3,4,5'
     end
@@ -610,7 +673,7 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'Mysql::Result' do
     setup do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.charset = 'latin1'
       @m.query 'create temporary table t (id int default 0, str char(10), primary key (id))'
       @m.query "insert into t values (1,'abc'),(2,'defg'),(3,'hi'),(4,null)"
@@ -766,7 +829,7 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'Mysql::Field' do
     setup do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.charset = 'latin1'
       @m.query 'create temporary table t (id int default 0, str char(10), primary key (id))'
       @m.query "insert into t values (1,'abc'),(2,'defg'),(3,'hi'),(4,null)"
@@ -817,8 +880,8 @@ class TestMysql < Test::Unit::TestCase
       assert{ @m.query('select 1.23').fetch_field.decimals == 2 }
     end
 
-    test '#hash return field as hash' do
-      assert{ @res.fetch_field.hash == {
+    test '#to_hash return field as hash' do
+      assert{ @res.fetch_field.to_hash == {
           'name'       => 'id',
           'table'      => 't',
           'def'        => nil,
@@ -829,7 +892,7 @@ class TestMysql < Test::Unit::TestCase
           'decimals'   => 0,
         }
       }
-      assert{ @res.fetch_field.hash == {
+      assert{ @res.fetch_field.to_hash == {
           'name'       => 'str',
           'table'      => 't',
           'def'        => nil,
@@ -865,15 +928,15 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'create Mysql::Stmt object:' do
     setup do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     end
 
     teardown do
       @m.close if @m
     end
 
-    test 'Mysql#stmt_init returns Mysql::Stmt object' do
-      assert{ @m.stmt_init.kind_of? Mysql::Stmt }
+    test 'Mysql#stmt returns Mysql::Stmt object' do
+      assert{ @m.stmt.kind_of? Mysql::Stmt }
     end
 
     test 'Mysq;#prepare returns Mysql::Stmt object' do
@@ -883,9 +946,9 @@ class TestMysql < Test::Unit::TestCase
 
   sub_test_case 'Mysql::Stmt' do
     setup do
-      @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query("set sql_mode=''")
-      @s = @m.stmt_init
+      @s = @m.stmt
     end
 
     teardown do

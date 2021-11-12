@@ -127,30 +127,38 @@ class Mysql
     # :RESULT :: After retr_fields(), retr_all_records() or stmt_retr_all_records() is needed.
 
     # make socket connection to server.
-    # @param host [String] if "localhost" or "" or nil then use UNIX socket. Otherwise use TCP socket
-    # @param port [Integer] port number using by TCP socket
-    # @param socket [String] socket file name using by UNIX socket
-    # @param [Hash] opts
-    # @option opts :conn_timeout [Integer] connect timeout (sec).
-    # @option opts :read_timeout [Integer] read timeout (sec).
-    # @option opts :write_timeout [Integer] write timeout (sec).
-    # @option opts :local_infile [String] local infile path
-    # @option opts :get_server_public_key [Boolean]
+    # @param opts [Hash]
+    # @option :host [String] hostname mysqld running
+    # @option :username [String] username to connect to mysqld
+    # @option :password [String] password to connect to mysqld
+    # @option :database [String] initial database name
+    # @option :port [String] port number (used if host is not 'localhost' or nil)
+    # @option :socket [String] socket filename (used if host is 'localhost' or nil)
+    # @option :flags [Integer] connection flag. Mysql::CLIENT_* ORed
+    # @option :charset [Mysql::Charset] character set
+    # @option :connect_timeout [Numeric, nil]
+    # @option :read_timeout [Numeric, nil]
+    # @option :write_timeout [Numeric, nil]
+    # @option :local_infile [Boolean]
+    # @option :load_data_local_dir [String]
+    # @option :ssl_mode [Integer]
+    # @option :get_server_public_key [Boolean]
     # @raise [ClientError] connection timeout
-    def initialize(host, port, socket, opts)
+    def initialize(opts)
       @opts = opts
+      @charset = Mysql::Charset.by_name("utf8mb4")
       @insert_id = 0
       @warning_count = 0
       @gc_stmt_queue = []   # stmt id list which GC destroy.
       set_state :INIT
       @get_server_public_key = @opts[:get_server_public_key]
       begin
-        if host.nil? or host.empty? or host == "localhost"
-          socket ||= ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
+        if @opts[:host].nil? or @opts[:host].empty? or @opts[:host] == "localhost"
+          socket = @opts[:socket] || ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
           @socket = Socket.unix(socket)
         else
-          port ||= ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql","tcp") rescue MYSQL_TCP_PORT)
-          @socket = Socket.tcp(host, port, connect_timeout: @opts[:connect_timeout])
+          port = @opts[:port] || ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql","tcp") rescue MYSQL_TCP_PORT)
+          @socket = Socket.tcp(@opts[:host], port, connect_timeout: @opts[:connect_timeout])
         end
       rescue Errno::ETIMEDOUT
         raise ClientError, "connection timeout"
@@ -162,17 +170,10 @@ class Mysql
     end
 
     # initial negotiate and authenticate.
-    # === Argument
-    # user    :: [String / nil] username
-    # passwd  :: [String / nil] password
-    # db      :: [String / nil] default database name. nil: no default.
-    # flag    :: [Integer] client flag
-    # charset :: [Mysql::Charset / nil] charset for connection. nil: use server's charset
-    # === Exception
-    # ProtocolError :: The old style password is not supported
-    def authenticate(user, passwd, db, flag, charset)
+    # @param charset [Mysql::Charset, nil] charset for connection. nil: use server's charset
+    # @raise [ProtocolError] The old style password is not supported
+    def authenticate
       check_state :INIT
-      @authinfo = [user, passwd, db, flag, charset]
       reset
       init_packet = InitialPacket.parse read
       @server_info = init_packet.server_version
@@ -180,27 +181,28 @@ class Mysql
       @server_capabilities = init_packet.server_capabilities
       @thread_id = init_packet.thread_id
       @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_PLUGIN_AUTH
-      @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile]
-      @client_flags |= CLIENT_CONNECT_WITH_DB if db
-      @client_flags |= flag
-      @charset = charset
-      unless @charset
+      @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile] || @opts[:load_data_local_dir]
+      @client_flags |= CLIENT_CONNECT_WITH_DB if @opts[:database]
+      @client_flags |= @opts[:flags]
+      if @opts[:charset]
+        @charset = @opts[:charset].is_a?(Charset) ? @opts[:charset] : Charset.by_name(@opts[:charset])
+      else
         @charset = Charset.by_number(init_packet.server_charset)
         @charset.encoding       # raise error if unsupported charset
       end
       enable_ssl
-      Authenticator.new(self).authenticate(user, passwd, db, init_packet.scramble_buff, init_packet.auth_plugin)
+      Authenticator.new(self).authenticate(@opts[:username], @opts[:password].to_s, @opts[:database], init_packet.scramble_buff, init_packet.auth_plugin)
       set_state :READY
     end
 
     def enable_ssl
       case @opts[:ssl_mode]
-      when SSL_MODE_DISABLED
+      when SSL_MODE_DISABLED, '1', 'disabled'
         return
-      when SSL_MODE_PREFERRED
+      when SSL_MODE_PREFERRED, '2', 'preferred'
         return if @socket.local_address.unix?
         return if @server_capabilities & CLIENT_SSL == 0
-      when SSL_MODE_REQUIRED
+      when SSL_MODE_REQUIRED, '3', 'required'
         if @server_capabilities & CLIENT_SSL == 0
           raise ClientError::SslConnectionError, "SSL is required but the server doesn't support it"
         end
@@ -272,7 +274,7 @@ class Mysql
     # send local file to server
     def send_local_file(filename)
       filename = File.absolute_path(filename)
-      if filename.start_with? @opts[:local_infile]
+      if @opts[:local_infile] || @opts[:load_data_local_dir] && filename.start_with?(@opts[:load_data_local_dir])
         File.open(filename){|f| write f}
       else
         raise ClientError::LoadDataLocalInfileRejected, 'LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.'
