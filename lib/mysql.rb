@@ -113,7 +113,7 @@ class Mysql
       flag &= ~CLIENT_COMPRESS
     end
     @protocol = Protocol.new(host, port, socket, @opts)
-    @protocol.authenticate user, passwd, db, flag, @charset
+    @protocol.authenticate user, passwd.to_s, db, flag, @charset
     @charset ||= @protocol.charset
     @host_info = (host.nil? || host == "localhost") ? 'Localhost via UNIX socket' : "#{host} via TCP/IP"
     query @init_command if @init_command
