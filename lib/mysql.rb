@@ -45,9 +45,6 @@ class Mysql
   # @private
   attr_reader :protocol
 
-  # @return [Boolean] if true, {#query} return {Mysql::Result}.
-  attr_accessor :query_with_result
-
   class << self
     # Make Mysql object and connect to mysqld.
     # parameter is same as arguments for {#initialize}.
@@ -113,7 +110,6 @@ class Mysql
     @fields = nil
     @protocol = nil
     @sqlstate = "00000"
-    @query_with_result = true
     @host_info = nil
     @last_error = nil
     @result_exist = false
@@ -301,13 +297,17 @@ class Mysql
   end
 
   # Execute query string.
-  # @param [String] str Query.
-  # @yield [Mysql::Result] evaluated per query.
-  # @return [Mysql::Result] If {#query_with_result} is true and result set exist.
-  # @return [nil] If {#query_with_result} is true and the query does not return result set.
-  # @return [Mysql] If {#query_with_result} is false or block is specified
+  # @overload query(str)
+  #   @param [String] str Query.
+  #   @return [Mysql::Result]
+  #   @return [nil] if the query does not return result set.
+  # @overload query(str, &block)
+  #   @param [String] str Query.
+  #   @yield [Mysql::Result] evaluated per query.
+  #   @return [self]
   # @example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
+  #  my.query("select 1,NULL,'abc'"){|res| res.fetch}
   def query(str, &block)
     check_connection
     @fields = nil
@@ -324,11 +324,7 @@ class Mysql
         end
         return self
       end
-      if @query_with_result
-        return @fields ? store_result : nil
-      else
-        return self
-      end
+      return @fields ? store_result : nil
     rescue ServerError => e
       @last_error = e
       @sqlstate = e.sqlstate
@@ -336,7 +332,7 @@ class Mysql
     end
   end
 
-  # Get all data for last query if query_with_result is false.
+  # Get all data for last query.
   # @return [Mysql::Result]
   def store_result
     check_connection
@@ -350,12 +346,6 @@ class Mysql
   def thread_id
     check_connection
     @protocol.thread_id
-  end
-
-  # Use result of query. The result data is retrieved when you use Mysql::Result#fetch.
-  # @return [Mysql::Result]
-  def use_result
-    store_result
   end
 
   # Set server option.

@@ -379,11 +379,8 @@ class TestMysql < Test::Unit::TestCase
       test 'returns nil if query returns no results' do
         assert{ @m.query('set @hoge:=123') == nil }
       end
-      test 'returns self if query_with_result is false' do
-        @m.query_with_result = false
-        assert{ @m.query('select 123') == @m }
-        @m.store_result
-        assert{ @m.query('set @hoge:=123') == @m }
+      test 'returns self if block is specified' do
+        assert{ @m.query('select 123'){} == @m }
       end
     end
 
@@ -415,51 +412,9 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
-    sub_test_case '#store_result' do
-      test 'returns Mysql::Result' do
-        @m.query_with_result = false
-        @m.query 'select 1,2,3'
-        ret = @m.store_result
-        assert{ ret.kind_of? Mysql::Result }
-        assert{ ret.fetch_row == ['1','2','3'] }
-      end
-      test 'raises error when no query' do
-        assert_raise Mysql::ClientError, 'invalid usage' do
-          @m.store_result
-        end
-      end
-      test 'raises error when query does not return results' do
-        @m.query 'set @hoge:=123'
-        assert_raise Mysql::ClientError, 'invalid usage' do
-          @m.store_result
-        end
-      end
-    end
-
     sub_test_case '#thread_id' do
       test 'returns thread id as Integer' do
         assert{ @m.thread_id.kind_of? Integer }
-      end
-    end
-
-    sub_test_case '#use_result' do
-      test 'returns Mysql::Result' do
-        @m.query_with_result = false
-        @m.query 'select 1,2,3'
-        ret = @m.use_result
-        assert{ ret.kind_of? Mysql::Result }
-        assert{ ret.fetch_row == ['1','2','3'] }
-      end
-      test 'raises error when no query' do
-        assert_raise Mysql::ClientError, 'invalid usage' do
-          @m.use_result
-        end
-      end
-      test 'raises error when query does not return results' do
-        @m.query 'set @hoge:=123'
-        assert_raise Mysql::ClientError, 'invalid usage' do
-          @m.use_result
-        end
       end
     end
 
@@ -524,27 +479,6 @@ class TestMysql < Test::Unit::TestCase
           @m.query("hoge")
         end
         assert{ @m.sqlstate == "42000" }
-      end
-    end
-
-    sub_test_case '#query_with_result' do
-      test 'default value is true' do
-        assert{ @m.query_with_result == true }
-      end
-      test 'can set value' do
-        assert{ (@m.query_with_result=true) == true }
-        assert{ @m.query_with_result == true }
-        assert{ (@m.query_with_result=false) == false }
-        assert{ @m.query_with_result == false }
-      end
-    end
-
-    sub_test_case '#query_with_result is false' do
-      test 'Mysql#query returns self and Mysql#store_result returns result set' do
-        @m.query_with_result = false
-        assert{ @m.query('select 1,2,3') == @m }
-        res = @m.store_result
-        assert{ res.fetch_row == ['1','2','3'] }
       end
     end
 
