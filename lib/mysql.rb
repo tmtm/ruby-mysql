@@ -75,7 +75,16 @@ class Mysql
 
   # @overload initialize(uri, **opts)
   #   @param uri [String, URI] "mysql://username:password@host:port/database?param=value&..." / "mysql://username:password@%2Ftmp%2Fmysql.sock/database" / "mysql://username:password@/database?socket=/tmp/mysql.sock"
+  #   @param opts [Hash] options
   # @overload initialize(host, username, password, database, port, socket, flags, **opts)
+  #   @param host [String] hostname mysqld running
+  #   @param username [String] username to connect to mysqld
+  #   @param password [String] password to connect to mysqld
+  #   @param database [String] initial database name
+  #   @param port [String] port number (used if host is not 'localhost' or nil)
+  #   @param socket [String] socket filename (used if host is 'localhost' or nil)
+  #   @param flags [Integer] connection flag. Mysql::CLIENT_* ORed
+  #   @param opts [Hash] options
   # @overload initialize(host: nil, username: nil, password: nil, database: nil, port: nil, socket: nil, flags: nil, **opts)
   #   @param host [String] hostname mysqld running
   #   @param username [String] username to connect to mysqld
@@ -85,21 +94,21 @@ class Mysql
   #   @param socket [String] socket filename (used if host is 'localhost' or nil)
   #   @param flags [Integer] connection flag. Mysql::CLIENT_* ORed
   #   @param opts [Hash] options
-  #   @option :host [String] hostname mysqld running
-  #   @option :username [String] username to connect to mysqld
-  #   @option :password [String] password to connect to mysqld
-  #   @option :database [String] initial database name
-  #   @option :port [String] port number (used if host is not 'localhost' or nil)
-  #   @option :socket [String] socket filename (used if host is 'localhost' or nil)
-  #   @option :flags [Integer] connection flag. Mysql::CLIENT_* ORed
-  #   @option :charset [Mysql::Charset, String] character set
-  #   @option :connect_timeout [Numeric, nil]
-  #   @option :read_timeout [Numeric, nil]
-  #   @option :write_timeout [Numeric, nil]
-  #   @option :local_infile [Boolean]
-  #   @option :load_data_local_dir [String]
-  #   @option :ssl_mode [Integer]
-  #   @option :get_server_public_key [Boolean]
+  #   @option opts :host [String] hostname mysqld running
+  #   @option opts :username [String] username to connect to mysqld
+  #   @option opts :password [String] password to connect to mysqld
+  #   @option opts :database [String] initial database name
+  #   @option opts :port [String] port number (used if host is not 'localhost' or nil)
+  #   @option opts :socket [String] socket filename (used if host is 'localhost' or nil)
+  #   @option opts :flags [Integer] connection flag. Mysql::CLIENT_* ORed
+  #   @option opts :charset [Mysql::Charset, String] character set
+  #   @option opts :connect_timeout [Numeric, nil]
+  #   @option opts :read_timeout [Numeric, nil]
+  #   @option opts :write_timeout [Numeric, nil]
+  #   @option opts :local_infile [Boolean]
+  #   @option opts :load_data_local_dir [String]
+  #   @option opts :ssl_mode [Integer]
+  #   @option opts :get_server_public_key [Boolean]
   def initialize(*args, **opts)
     @fields = nil
     @protocol = nil
@@ -209,7 +218,7 @@ class Mysql
   end
 
   # Set charset of MySQL connection.
-  # @param [String / Mysql::Charset] cs
+  # @param [String, Mysql::Charset] cs
   def charset=(cs)
     charset = cs.is_a?(Charset) ? cs : Charset.by_name(cs)
     if @protocol

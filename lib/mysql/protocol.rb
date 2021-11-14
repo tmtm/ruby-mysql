@@ -15,12 +15,10 @@ class Mysql
     MAX_PACKET_LENGTH = 2**24-1
 
     # Convert netdata to Ruby value
-    # === Argument
-    # data :: [Packet] packet data
-    # type :: [Integer] field type
-    # unsigned :: [true or false] true if value is unsigned
-    # === Return
-    # Object :: converted value.
+    # @param data [Packet] packet data
+    # @param type [Integer] field type
+    # @param unsigned [true or false] true if value is unsigned
+    # @return [Object] converted value.
     def self.net2value(pkt, type, unsigned)
       case type
       when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB, Field::TYPE_JSON
@@ -67,13 +65,10 @@ class Mysql
     end
 
     # convert Ruby value to netdata
-    # === Argument
-    # v :: [Object] Ruby value.
-    # === Return
-    # Integer :: type of column. Field::TYPE_*
-    # String :: netdata
-    # === Exception
-    # ProtocolError :: value too large / value is not supported
+    # @param v [Object] Ruby value.
+    # @return [Integer] type of column. Field::TYPE_*
+    # @return [String] netdata
+    # @raise [ProtocolError] value too large / value is not supported
     def self.value2net(v)
       case v
       when nil
@@ -232,10 +227,8 @@ class Mysql
     end
 
     # Query command
-    # === Argument
-    # query :: [String] query string
-    # === Return
-    # [Integer / nil] number of fields of results. nil if no results.
+    # @param query [String] query string
+    # @return [Integer, nil] number of fields of results. nil if no results.
     def query_command(query)
       check_state :READY
       begin
@@ -249,8 +242,7 @@ class Mysql
     end
 
     # get result of query.
-    # === Return
-    # [integer / nil] number of fields of results. nil if no results.
+    # @return [integer, nil] number of fields of results. nil if no results.
     def get_result
       begin
         res_packet = ResultPacket.parse read
@@ -285,10 +277,8 @@ class Mysql
     end
 
     # Retrieve n fields
-    # === Argument
-    # n :: [Integer] number of fields
-    # === Return
-    # [Array of Mysql::Field] field list
+    # @param n [Integer] number of fields
+    # @return [Array<Mysql::Field>] field list
     def retr_fields(n)
       check_state :FIELD
       begin
@@ -303,10 +293,8 @@ class Mysql
     end
 
     # Retrieve all records for simple query
-    # === Argument
-    # fields :: [Array<Mysql::Field>] number of fields
-    # === Return
-    # [Array of Array of String] all records
+    # @param fields [Array<Mysql::Field>] number of fields
+    # @return [Array<Array<String>>] all records
     def retr_all_records(fields)
       check_state :RESULT
       enc = charset.encoding
@@ -354,12 +342,8 @@ class Mysql
     end
 
     # Stmt prepare command
-    # === Argument
-    # stmt :: [String] prepared statement
-    # === Return
-    # [Integer] statement id
-    # [Integer] number of parameters
-    # [Array of Field] field list
+    # @param stmt [String] prepared statement
+    # @return [Array<Integer, Integer, Array<Field>>] statement id, number of parameters, field list
     def stmt_prepare_command(stmt)
       synchronize do
         reset
@@ -380,11 +364,9 @@ class Mysql
     end
 
     # Stmt execute command
-    # === Argument
-    # stmt_id :: [Integer] statement id
-    # values  :: [Array] parameters
-    # === Return
-    # [Integer] number of fields
+    # @param stmt_id [Integer] statement id
+    # @param values [Array] parameters
+    # @return [Integer] number of fields
     def stmt_execute_command(stmt_id, values)
       check_state :READY
       begin
@@ -398,11 +380,9 @@ class Mysql
     end
 
     # Retrieve all records for prepared statement
-    # === Argument
-    # fields  :: [Array of Mysql::Fields] field list
-    # charset :: [Mysql::Charset]
-    # === Return
-    # [Array of Array of Object] all records
+    # @param fields [Array of Mysql::Fields] field list
+    # @param charset [Mysql::Charset]
+    # @return [Array<Array<Object>>] all records
     def stmt_retr_all_records(fields, charset)
       check_state :RESULT
       enc = charset.encoding
@@ -418,8 +398,7 @@ class Mysql
     end
 
     # Stmt close command
-    # === Argument
-    # stmt_id :: [Integer] statement id
+    # @param stmt_id [Integer] statement id
     def stmt_close_command(stmt_id)
       synchronize do
         reset
@@ -465,10 +444,8 @@ class Mysql
     end
 
     # Read one packet data
-    # === Return
-    # [Packet] packet data
-    # === Exception
-    # [ProtocolError] invalid packet sequence number
+    # @return [Packet] packet data
+    # @rails [ProtocolError] invalid packet sequence number
     def read
       data = ''
       len = nil
@@ -529,8 +506,7 @@ class Mysql
     end
 
     # Write one packet data
-    # === Argument
-    # data :: [String / IO] packet data. If data is nil, write empty packet.
+    # @param data [String, IO, nil] packet data. If data is nil, write empty packet.
     def write(data)
       begin
         @socket.sync = false
@@ -574,17 +550,14 @@ class Mysql
     end
 
     # Read EOF packet
-    # === Exception
-    # [ProtocolError] packet is not EOF
+    # @raise [ProtocolError] packet is not EOF
     def read_eof_packet
       raise ProtocolError, "packet is not EOF" unless read.eof?
     end
 
     # Send simple command
-    # === Argument
-    # packet :: [String] packet data
-    # === Return
-    # [String] received data
+    # @param packet :: [String] packet data
+    # @return [String] received data
     def simple_command(packet)
       synchronize do
         reset
@@ -794,17 +767,15 @@ class Mysql
   end
 
   class StmtRawRecord
-    # === Argument
-    # pkt     :: [Packet]
-    # fields  :: [Array of Fields]
-    # encoding:: [Encoding]
+    # @param pkt [Packet]
+    # @param fields [Array of Fields]
+    # @param encoding [Encoding]
     def initialize(packet, fields, encoding)
       @packet, @fields, @encoding = packet, fields, encoding
     end
 
     # Parse statement result packet
-    # === Return
-    # [Array of Object] one record
+    # @return [Array<Object>] one record
     def parse_record_packet
       @packet.utiny  # skip first byte
       null_bit_map = @packet.read((@fields.length+7+2)/8).unpack("b*").first
