@@ -1,4 +1,4 @@
-## [3.0.0] - 2021-11-xx
+## [3.0.0] - 2021-11-16
 
 - `Mysql.new` no longer connect. use `Mysql.connect` or `Mysql#connect`.
 

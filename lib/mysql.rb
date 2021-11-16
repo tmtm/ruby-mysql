@@ -23,6 +23,36 @@ class Mysql
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
+  # @!attribute [rw] host
+  #   @return [String, nil]
+  # @!attribute [rw] username
+  #   @return [String, nil]
+  # @!attribute [rw] password
+  #   @return [String, nil]
+  # @!attribute [rw] database
+  #   @return [String, nil]
+  # @!attribute [rw] port
+  #   @return [Integer, String, nil]
+  # @!attribute [rw] socket
+  #   @return [String, nil] socket filename
+  # @!attribute [rw] flags
+  #   @return [Integer, nil]
+  # @!attribute [rw] connect_timeout
+  #   @return [Numeric, nil]
+  # @!attribute [rw] read_timeout
+  #   @return [Numeric, nil]
+  # @!attribute [rw] write_timeout
+  #   @return [Numeric, nil]
+  # @!attribute [rw] init_command
+  #   @return [String, nil]
+  # @!attribute [rw] local_infile
+  #   @return [Boolean]
+  # @!attribute [rw] load_data_local_dir
+  #   @return [String, nil]
+  # @!attribute [rw] ssl_mode
+  #   @return [String, Integer] 1 or "disabled" / 2 or "preferred" / 3 or "required"
+  # @!attribute [rw] get_server_public_key
+  #   @return [Boolean]
   DEFAULT_OPTS = {
     host: nil,
     username: nil,
