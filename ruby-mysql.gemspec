@@ -8,8 +8,7 @@ Gem::Specification.new do |s|
   s.description = 'This is MySQL connector. pure Ruby version'
   s.email = 'tommy@tmtm.org'
   s.homepage = 'http://github.com/tmtm/ruby-mysql'
-  s.files = ['README.rdoc', 'lib/mysql.rb', 'lib/mysql/constants.rb', 'lib/mysql/protocol.rb', 'lib/mysql/charset.rb', 'lib/mysql/error.rb', 'lib/mysql/packet.rb', 'lib/mysql/authenticator.rb'] + Dir.glob('lib/mysql/authenticator/*.rb')
-  s.extra_rdoc_files = ['README.rdoc']
+  s.files = ['README.md', 'CHANGELOG.md', 'lib/mysql.rb', 'lib/mysql/constants.rb', 'lib/mysql/protocol.rb', 'lib/mysql/charset.rb', 'lib/mysql/error.rb', 'lib/mysql/packet.rb', 'lib/mysql/authenticator.rb'] + Dir.glob('lib/mysql/authenticator/*.rb')
   s.test_files = Dir.glob('test/**/*.rb')
   s.license = 'Ruby'
   s.metadata['homepage_uri'] = 'http://github.com/tmtm/ruby-mysql'
