@@ -252,6 +252,7 @@ class Mysql
         end
         if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
           send_local_file(res_packet.message)
+          res_packet = ResultPacket.parse read
         end
         @affected_rows, @insert_id, @server_status, @warning_count, @message =
           res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
@@ -273,7 +274,6 @@ class Mysql
       end
     ensure
       write nil # EOF mark
-      read
     end
 
     # Retrieve n fields
