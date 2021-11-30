@@ -176,6 +176,7 @@ class TestMysql < Test::Unit::TestCase
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
+      assert{ @m.info == 'Records: 1  Deleted: 0  Skipped: 0  Warnings: 0' }
       assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
     end
     test 'load_data_local_dir: client can execute LOAD DATA LOCAL INFILE query with specified directory' do
