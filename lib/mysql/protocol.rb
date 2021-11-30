@@ -460,6 +460,7 @@ class Mysql
         raise EOFError unless ret && ret.length == len
         data.concat ret
       rescue EOFError
+        @socket.close rescue nil
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
       rescue Errno::ETIMEDOUT
         raise ClientError, "read timeout"
@@ -524,6 +525,7 @@ class Mysql
         @socket.sync = true
         @socket.flush
       rescue Errno::EPIPE
+        @socket.close rescue nil
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
       rescue Errno::ETIMEDOUT
         raise ClientError, "write timeout"
