@@ -561,6 +561,20 @@ class TestMysql < Test::Unit::TestCase
     assert{ m.more_results? == false }
   end
 
+  test 'procedure returns multiple results' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m.query 'drop procedure if exists test_proc'
+    m.query 'create procedure test_proc() begin select 1 as a; select 2 as b; end'
+    res = m.query 'call test_proc()'
+    assert{ res.entries == [['1']] }
+    assert{ m.more_results? == true }
+    assert{ m.next_result == true }
+    assert{ m.store_result.entries == [['2']] }
+    assert{ m.more_results? == true }
+    assert{ m.next_result == true }
+    assert{ m.more_results? == false }
+  end
+
   sub_test_case 'Mysql::Result' do
     setup do
       @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
