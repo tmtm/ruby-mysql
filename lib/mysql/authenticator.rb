@@ -33,10 +33,10 @@ class Mysql
       get(plugin) or raise ClientError, "unknown plugin: #{plugin}"
     end
 
-    def authenticate(user, passwd, db, scramble, plugin_name)
+    def authenticate(user, passwd, db, scramble, plugin_name, connect_attrs)
       plugin = (get(plugin_name) || DummyPlugin).new(@protocol)
       pkt = plugin.authenticate(passwd, scramble) do |hashed|
-        @protocol.write Protocol::AuthenticationPacket.serialize(@protocol.client_flags, 1024**3, @protocol.charset.number, user, hashed, db, plugin.name)
+        @protocol.write Protocol::AuthenticationPacket.serialize(@protocol.client_flags, 1024**3, @protocol.charset.number, user, hashed, db, plugin.name, connect_attrs)
       end
       while true
         res = Protocol::AuthenticationResultPacket.parse(pkt)

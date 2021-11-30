@@ -1600,4 +1600,12 @@ class TestMysql < Test::Unit::TestCase
       end
     end
   end
+
+  test 'connect_attrs' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET, connect_attrs: {hoge: 'fuga'})
+    if m.server_version >= 50600
+      h = m.query("select * from performance_schema.session_connect_attrs where processlist_id=connection_id()").fetch_hash
+      assert{ h['ATTR_NAME'] == 'hoge' && h['ATTR_VALUE'] == 'fuga' }
+    end
+  end
 end

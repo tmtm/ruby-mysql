@@ -175,7 +175,7 @@ class Mysql
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
       @server_capabilities = init_packet.server_capabilities
       @thread_id = init_packet.thread_id
-      @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH
+      @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_ATTRS
       @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile] || @opts[:load_data_local_dir]
       @client_flags |= CLIENT_CONNECT_WITH_DB if @opts[:database]
       @client_flags |= @opts[:flags]
@@ -186,7 +186,7 @@ class Mysql
         @charset.encoding       # raise error if unsupported charset
       end
       enable_ssl
-      Authenticator.new(self).authenticate(@opts[:username], @opts[:password].to_s, @opts[:database], init_packet.scramble_buff, init_packet.auth_plugin)
+      Authenticator.new(self).authenticate(@opts[:username], @opts[:password].to_s, @opts[:database], init_packet.scramble_buff, init_packet.auth_plugin, @opts[:connect_attrs])
       set_state :READY
     end
 
@@ -679,7 +679,7 @@ class Mysql
 
     # Authentication packet
     class AuthenticationPacket
-      def self.serialize(client_flags, max_packet_size, charset_number, username, scrambled_password, databasename, auth_plugin)
+      def self.serialize(client_flags, max_packet_size, charset_number, username, scrambled_password, databasename, auth_plugin, connect_attrs)
         data = [
           client_flags,
           max_packet_size,
@@ -695,7 +695,8 @@ class Mysql
         end
         data.push auth_plugin
         pack.concat "Z*"
-        data.pack(pack)
+        attr = connect_attrs.map{|k, v| [Packet.lcs(k.to_s), Packet.lcs(v.to_s)]}.flatten.join
+        data.pack(pack) + Packet.lcb(attr.size)+attr
       end
     end
 
