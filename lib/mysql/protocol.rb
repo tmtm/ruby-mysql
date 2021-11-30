@@ -474,6 +474,7 @@ class Mysql
           _, errno, message = data.unpack("Cva*")    # Version 4.0 Error
           @sqlstate = ""
         end
+        @server_status &= ~SERVER_MORE_RESULTS_EXISTS
         message.force_encoding(@charset.encoding)
         if Mysql::ServerError::ERROR_MAP.key? errno
           raise Mysql::ServerError::ERROR_MAP[errno].new(message, @sqlstate)

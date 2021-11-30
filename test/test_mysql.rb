@@ -551,6 +551,16 @@ class TestMysql < Test::Unit::TestCase
     end
   end
 
+  test 'multiple statement error' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
+    res = m.query 'select 1; select hoge; select 2'
+    assert{ res.entries == [['1']] }
+    assert{ m.more_results? == true }
+    assert_raise(Mysql::ServerError::BadFieldError){ m.next_result }
+    assert{ m.more_results? == false }
+  end
+
   sub_test_case 'Mysql::Result' do
     setup do
       @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
