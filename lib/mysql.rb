@@ -494,7 +494,7 @@ class Mysql
   private
 
   def check_connection
-    raise ClientError::ServerGoneError, 'MySQL server has gone away' unless @protocol
+    raise ClientError, 'MySQL client is not connected' unless @protocol
   end
 
   # @!visibility public
