@@ -522,9 +522,6 @@ class TestMysql < Test::Unit::TestCase
     test 'Mysql#query returns results for first query' do
       assert{ @res.entries == [['1','2']] }
     end
-    test 'Mysql#more_results is true' do
-      assert{ @m.more_results == true }
-    end
     test 'Mysql#more_results? is true' do
       assert{ @m.more_results? == true }
     end
@@ -538,9 +535,6 @@ class TestMysql < Test::Unit::TestCase
       end
       test 'Mysql#store_result returns results' do
         assert{ @res.entries == [['3','4','5']] }
-      end
-      test 'Mysql#more_results is false' do
-        assert{ @m.more_results == false }
       end
       test 'Mysql#more_results? is false' do
         assert{ @m.more_results? == false }

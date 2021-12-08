@@ -392,15 +392,14 @@ class Mysql
   end
 
   # @return [Boolean] true if multiple queries are specified and unexecuted queries exists.
-  def more_results
+  def more_results?
     @protocol.server_status & SERVER_MORE_RESULTS_EXISTS != 0
   end
-  alias more_results? more_results
 
   # execute next query if multiple queries are specified.
   # @return [Boolean] true if next query exists.
   def next_result
-    return false unless more_results
+    return false unless more_results?
     check_connection
     @fields = nil
     nfields = @protocol.get_result
