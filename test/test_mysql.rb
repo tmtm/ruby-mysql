@@ -1602,4 +1602,18 @@ class TestMysql < Test::Unit::TestCase
       assert{ h['ATTR_NAME'] == 'hoge' && h['ATTR_VALUE'] == 'fuga' }
     end
   end
+
+  test 'disconnect from server' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m.query('kill connection_id()') rescue nil
+    e = assert_raise(Mysql::ClientError::ServerGoneError){ m.query('select 1') }
+    assert{ e.message == 'MySQL server has gone away' }
+  end
+
+  test 'disconnect from client' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m.close
+    e = assert_raise(Mysql::ClientError){ m.query('select 1') }
+    assert{ e.message == 'MySQL client is not connected' }
+  end
 end
