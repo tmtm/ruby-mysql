@@ -234,6 +234,7 @@ class Mysql
       begin
         reset
         write [COM_QUERY, @charset.convert(query)].pack("Ca*")
+        set_state :WAIT_RESULT
         get_result
       rescue
         set_state :READY
@@ -244,6 +245,7 @@ class Mysql
     # get result of query.
     # @return [integer, nil] number of fields of results. nil if no results.
     def get_result
+      check_state :WAIT_RESULT
       begin
         res_packet = ResultPacket.parse read
         if res_packet.field_count.to_i > 0  # result data exists
@@ -256,12 +258,16 @@ class Mysql
         end
         @affected_rows, @insert_id, @server_status, @warning_count, @message =
           res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
-        set_state :READY
+        set_state :READY unless more_results?
         return nil
       rescue
         set_state :READY
         raise
       end
+    end
+
+    def more_results?
+      @server_status & SERVER_MORE_RESULTS_EXISTS != 0
     end
 
     # send local file to server
@@ -303,11 +309,12 @@ class Mysql
         until (pkt = read).eof?
           all_recs.push RawRecord.new(pkt, fields, enc)
         end
-        pkt.read(3)
-        @server_status = pkt.utiny
+        pkt.utiny  # 0xFE
+        _warnings = pkt.ushort
+        @server_status = pkt.ushort
         all_recs
       ensure
-        set_state :READY
+        set_state(more_results? ? :WAIT_RESULT : :READY)
       end
     end
 
@@ -372,7 +379,7 @@ class Mysql
       begin
         reset
         write ExecutePacket.serialize(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
-        get_result
+        set_state :WAIT_RESULT
       rescue
         set_state :READY
         raise
@@ -391,9 +398,12 @@ class Mysql
         until (pkt = read).eof?
           all_recs.push StmtRawRecord.new(pkt, fields, enc)
         end
+        pkt.utiny  # 0xFE
+        _warnings = pkt.ushort
+        @server_status = pkt.ushort
         all_recs
       ensure
-        set_state :READY
+        set_state(more_results? ? :WAIT_RESULT : :READY)
       end
     end
 
@@ -555,7 +565,11 @@ class Mysql
     # Read EOF packet
     # @raise [ProtocolError] packet is not EOF
     def read_eof_packet
-      raise ProtocolError, "packet is not EOF" unless read.eof?
+      pkt = read
+      raise ProtocolError, "packet is not EOF" unless pkt.eof?
+      pkt.utiny  # 0xFE
+      _warnings = pkt.ushort
+      @server_status = pkt.ushort
     end
 
     # Send simple command

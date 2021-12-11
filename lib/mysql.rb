@@ -393,7 +393,7 @@ class Mysql
 
   # @return [Boolean] true if multiple queries are specified and unexecuted queries exists.
   def more_results?
-    @protocol.server_status & SERVER_MORE_RESULTS_EXISTS != 0
+    @protocol.more_results?
   end
 
   # execute next query if multiple queries are specified.
@@ -844,7 +844,8 @@ class Mysql
       values = values.map{|v| @protocol.charset.convert v}
       begin
         @sqlstate = "00000"
-        nfields = @protocol.stmt_execute_command @statement_id, values
+        @protocol.stmt_execute_command @statement_id, values
+        nfields = @protocol.get_result
         if nfields
           @fields = @protocol.retr_fields nfields
           @result = StatementResult.new @fields, @protocol
@@ -858,6 +859,23 @@ class Mysql
         @sqlstate = e.sqlstate
         raise
       end
+    end
+
+    def more_results?
+      @protocol.more_results?
+    end
+
+    def next_result
+      return false unless more_results?
+      nfields = @protocol.get_result
+      if nfields
+        @fields = @protocol.retr_fields nfields
+        @result = StatementResult.new @fields, @protocol
+      else
+        @affected_rows, @insert_id, @server_status, @warning_count, @info =
+          @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
+      end
+      return true
     end
 
     # Close prepared statement
