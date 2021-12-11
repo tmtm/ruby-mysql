@@ -1399,6 +1399,20 @@ class TestMysql < Test::Unit::TestCase
       assert{ @s.insert_id == 2 }
     end
 
+    test '#more_reults? and #next_result' do
+      @m.query 'drop procedure if exists test_proc'
+      @m.query 'create procedure test_proc() begin select 1 as a; select 2 as b; end'
+      st = @m.prepare 'call test_proc()'
+      st.execute
+      assert{ st.entries == [[1]] }
+      assert{ st.more_results? == true }
+      assert{ st.next_result == true }
+      assert{ st.entries == [[2]] }
+      assert{ st.more_results? == true }
+      assert{ st.next_result == true }
+      assert{ st.more_results? == false }
+    end
+
     test '#num_rows' do
       @m.query 'create temporary table t (i int)'
       @m.query 'insert into t values (1),(2),(3),(4)'
