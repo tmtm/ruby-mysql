@@ -411,7 +411,7 @@ class Mysql
     end
 
     def check_state(st)
-      raise 'command out of sync' unless @state == st
+      raise Mysql::ClientError::CommandsOutOfSync, 'command out of sync' unless @state == st
     end
 
     def set_state(st)
