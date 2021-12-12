@@ -1402,6 +1402,14 @@ class TestMysql < Test::Unit::TestCase
       @s.free_result
     end
 
+    test '#info' do
+      @s.free_result
+      @m.query 'create temporary table t (i int)'
+      @s.prepare 'insert into t values (1),(2),(3)'
+      @s.execute
+      assert{ @s.info == 'Records: 3  Duplicates: 0  Warnings: 0' }
+    end
+
     test '#insert_id' do
       @m.query 'create temporary table t (i int auto_increment, unique(i))'
       @s.prepare 'insert into t values (0)'

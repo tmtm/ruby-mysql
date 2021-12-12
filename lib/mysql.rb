@@ -797,7 +797,7 @@ class Mysql
   class Stmt
     include Enumerable
 
-    attr_reader :affected_rows, :insert_id, :server_status, :warning_count
+    attr_reader :affected_rows, :info, :insert_id, :server_status, :warning_count
     attr_reader :param_count, :fields, :sqlstate
 
     # @private
