@@ -479,7 +479,9 @@ class TestMysql < Test::Unit::TestCase
 
     sub_test_case '#set_server_option' do
       test 'returns self' do
+        assert_raise(Mysql::ServerError::ParseError){ @m.query('select 1; select 2'){} }
         assert{ @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON) == @m }
+        assert_nothing_raised{ @m.query('select 1; select 2'){} }
       end
     end
 
