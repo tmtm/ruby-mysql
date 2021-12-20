@@ -386,14 +386,38 @@ class TestMysql < Test::Unit::TestCase
     end
 
     sub_test_case '#query' do
+      setup do
+        @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
+      end
       test 'returns Mysql::Result if query returns results' do
         assert{ @m.query('select 123').kind_of? Mysql::Result }
       end
       test 'returns nil if query returns no results' do
-        assert{ @m.query('set @hoge:=123') == nil }
+        assert{ @m.query('set @hoge=123') == nil }
       end
       test 'returns self if block is specified' do
         assert{ @m.query('select 123'){} == @m }
+      end
+      test 'returns self if return_result is false' do
+        assert{ @m.query('select 123', return_result: false) == @m }
+        assert{ @m.result != nil }
+        assert{ @m.store_result.entries == [['123']] }
+      end
+      test 'if return_result is false and query returns no result' do
+        assert{ @m.query('set @hoge=123', return_result: false) == @m }
+        assert{ @m.result == nil }
+      end
+      test 'if yield_null_result is true' do
+        expects = [[['1']], nil, [['2']]]
+        results = []
+        @m.query('select 1; set @hoge=123; select 2', yield_null_result: true){|r| results.push r&.entries }
+        assert{ results == expects }
+      end
+      test 'if yield_null_result is false' do
+        expects = [[['1']], [['2']]]
+        results = []
+        @m.query('select 1; set @hoge=123; select 2', yield_null_result: false){|r| results.push r&.entries }
+        assert{ results == expects }
       end
     end
 
@@ -517,46 +541,28 @@ class TestMysql < Test::Unit::TestCase
       test 'evaluate block only when query has result' do
         @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
         cnt = 0
-        expect = [["1"], ["2"]]
-        assert{ @m.query('select 1; set @hoge:=1; select 2'){|res|
-            assert{ res.fetch_row == expect.shift }
+        expect = [[["1"]], nil, [["2"]]]
+        assert do
+          @m.query('select 1; set @hoge:=1; select 2'){|res|
+            assert{ res&.entries == expect.shift }
             cnt += 1
-          } == @m }
-        assert{ cnt == 2 }
+          } == @m
+        end
+        assert{ cnt == 3 }
       end
     end
   end
 
-  sub_test_case 'multiple statement query:' do
-    setup do
-      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
-      @m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
-      @res = @m.query 'select 1,2; select 3,4,5'
-    end
-    test 'Mysql#query returns results for first query' do
-      assert{ @res.entries == [['1','2']] }
-    end
-    test 'Mysql#more_results? is true' do
-      assert{ @m.more_results? == true }
-    end
-    test 'Mysql#next_result is true' do
-      assert{ @m.next_result == true }
-    end
-    sub_test_case 'for next query:'  do
-      setup do
-        @m.next_result
-        @res = @m.store_result
-      end
-      test 'Mysql#store_result returns results' do
-        assert{ @res.entries == [['3','4','5']] }
-      end
-      test 'Mysql#more_results? is false' do
-        assert{ @m.more_results? == false }
-      end
-      test 'Mysql#next_result is false' do
-        assert{ @m.next_result == false }
-      end
-    end
+  test 'multiple statement query' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
+    res = m.query 'select 1,2; select 3,4,5'
+    assert{ res.entries == [['1','2']] }
+    assert{ m.more_results? == true }
+    assert{ m.next_result.entries == [['3','4','5']] }
+    assert{ m.more_results? == false }
+    assert{ m.next_result == nil }
+    m.close!
   end
 
   test 'multiple statement error' do
@@ -567,6 +573,7 @@ class TestMysql < Test::Unit::TestCase
     assert{ m.more_results? == true }
     assert_raise(Mysql::ServerError::BadFieldError){ m.next_result }
     assert{ m.more_results? == false }
+    m.close!
   end
 
   test 'procedure returns multiple results' do
@@ -576,10 +583,23 @@ class TestMysql < Test::Unit::TestCase
     res = m.query 'call test_proc()'
     assert{ res.entries == [['1']] }
     assert{ m.more_results? == true }
-    assert{ m.next_result == true }
-    assert{ m.store_result.entries == [['2']] }
+    assert{ m.next_result.entries == [['2']] }
     assert{ m.more_results? == true }
-    assert{ m.next_result == true }
+    assert{ m.next_result == nil }
+    assert{ m.more_results? == false }
+  end
+
+  test 'multiple statements includes no results statement' do
+    m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+    m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
+    m.query('create temporary table t (i int)')
+    res = m.query 'select 1; insert into t values (1),(2),(3); select 2'
+    assert{ res.entries == [['1']] }
+    assert{ m.more_results? == true }
+    assert{ m.next_result == nil }
+    assert{ m.info == 'Records: 3  Duplicates: 0  Warnings: 0' }
+    assert{ m.more_results? == true }
+    assert{ m.next_result.entries == [['2']] }
     assert{ m.more_results? == false }
   end
 
@@ -884,34 +904,44 @@ class TestMysql < Test::Unit::TestCase
       @m.query 'create temporary table t (i int)'
       @m.query 'insert into t values (0),(1),(2),(3),(4),(5),(6)'
       @s.prepare 'select i from t'
-      @s.execute
-      assert{ @s.fetch == [0] }
-      assert{ @s.fetch == [1] }
-      assert{ @s.fetch == [2] }
-      @s.data_seek 5
-      assert{ @s.fetch == [5] }
-      @s.data_seek 1
-      assert{ @s.fetch == [1] }
+      res = @s.execute
+      assert{ res.fetch == [0] }
+      assert{ res.fetch == [1] }
+      assert{ res.fetch == [2] }
+      res.data_seek 5
+      assert{ res.fetch == [5] }
+      res.data_seek 1
+      assert{ res.fetch == [1] }
     end
 
     test '#each iterate block with a record' do
       @m.query 'create temporary table t (i int, c char(255), d datetime)'
       @m.query "insert into t values (1,'abc','19701224235905'),(2,'def','21120903123456'),(3,'123',null)"
       @s.prepare 'select * from t'
-      @s.execute
+      res = @s.execute
       expect = [
         [1, 'abc', Time.new(1970,12,24,23,59,05)],
         [2, 'def', Time.new(2112,9,3,12,34,56)],
         [3, '123', nil],
       ]
-      @s.each do |a|
+      res.each do |a|
         assert{ a == expect.shift }
       end
     end
 
-    test '#execute returns self' do
+    test '#execute returns result set' do
       @s.prepare 'select 1'
-      assert{ @s.execute == @s }
+      assert{ @s.execute.entries == [[1]] }
+    end
+
+    test '#execute returns nil if query returns no results' do
+      @s.prepare 'set @a=1'
+      assert{ @s.execute == nil }
+    end
+
+    test '#execute returns self if return_result is false' do
+      @s.prepare 'select 1'
+      assert{ @s.execute(return_result: false) == @s }
     end
 
     test '#execute pass arguments to query' do
@@ -1425,14 +1455,40 @@ class TestMysql < Test::Unit::TestCase
       @m.query 'drop procedure if exists test_proc'
       @m.query 'create procedure test_proc() begin select 1 as a; select 2 as b; end'
       st = @m.prepare 'call test_proc()'
-      st.execute
-      assert{ st.entries == [[1]] }
+      res = st.execute
+      assert{ res.entries == [[1]] }
       assert{ st.more_results? == true }
-      assert{ st.next_result == true }
-      assert{ st.entries == [[2]] }
+      res = st.next_result
+      assert{ res.entries == [[2]] }
       assert{ st.more_results? == true }
-      assert{ st.next_result == true }
+      res = st.next_result
+      assert{ res == nil }
       assert{ st.more_results? == false }
+    end
+
+    sub_test_case '#execute with block' do
+      setup do
+        @m.query 'drop procedure if exists test_proc'
+        @m.query 'create procedure test_proc() begin select 1 as a; select 2 as b; end'
+        @st = @m.prepare 'call test_proc()'
+      end
+      test 'returns self' do
+        assert{ @st.execute{} == @st }
+      end
+      test 'evaluate block multiple times' do
+        res = []
+        @st.execute do |r|
+          res.push r&.entries
+        end
+        assert{ res == [[[1]], [[2]], nil] }
+      end
+      test 'evaluate block only when query has result' do
+        res = []
+        @st.execute(yield_null_result: false) do |r|
+          res.push r&.entries
+        end
+        assert{ res == [[[1]], [[2]]] }
+      end
     end
 
     test '#num_rows' do
@@ -1466,6 +1522,16 @@ class TestMysql < Test::Unit::TestCase
       assert_raise Mysql::ParseError do
         @s.prepare 'invalid query'
       end
+    end
+
+    test '#fields' do
+      @s.prepare 'select 1 foo, 2 bar'
+      f = @s.fields
+      assert{ f[0].name == 'foo' }
+      assert{ f[1].name == 'bar' }
+
+      @s.prepare 'set @a=1'
+      assert{ @s.fields == [] }
     end
 
     test '#result_metadata' do

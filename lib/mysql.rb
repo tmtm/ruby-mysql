@@ -78,6 +78,12 @@ class Mysql
   # @private
   attr_reader :protocol
 
+  # @return [Array<Mysql::Field>] fields of result set
+  attr_reader :fields
+
+  # @return [Mysql::Result]
+  attr_reader :result
+
   class << self
     # Make Mysql object and connect to mysqld.
     # parameter is same as arguments for {#initialize}.
@@ -142,11 +148,11 @@ class Mysql
   #   @option opts :connect_attrs [Hash]
   def initialize(*args, **opts)
     @fields = nil
+    @result = nil
     @protocol = nil
     @sqlstate = "00000"
     @host_info = nil
     @last_error = nil
-    @result_exist = false
     @opts = DEFAULT_OPTS.dup
     parse_args(args, opts)
   end
@@ -331,34 +337,41 @@ class Mysql
   end
 
   # Execute query string.
-  # @overload query(str)
-  #   @param [String] str Query.
-  #   @return [Mysql::Result]
-  #   @return [nil] if the query does not return result set.
-  # @overload query(str, &block)
-  #   @param [String] str Query.
-  #   @yield [Mysql::Result] evaluated per query.
-  #   @return [self]
+  # @param str [String] Query.
+  # @param return_result [Boolean]
+  # @param yield_null_result [Boolean]
+  # @return [Mysql::Result] if return_result is true and the query returns result set.
+  # @return [nil] if return_results is true and the query does not return result set.
+  # @return [self] if return_result is false or block is specified.
   # @example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
   #  my.query("select 1,NULL,'abc'"){|res| res.fetch}
-  def query(str, &block)
+  def query(str, return_result: true, yield_null_result: true, &block)
     check_connection
     @fields = nil
     begin
+      res = nil
       nfields = @protocol.query_command str
-      if nfields
-        @fields = @protocol.retr_fields nfields
-        @result_exist = true
-      end
       if block
         while true
-          block.call store_result if @fields
-          break unless next_result
+          if nfields
+            @fields = @protocol.retr_fields(nfields)
+            block.call Result.new(@fields, @protocol)
+          elsif yield_null_result
+            block.call nil
+          end
+          break unless more_results?
+          nfields = @protocol.get_result
         end
         return self
       end
-      return @fields ? store_result : nil
+      if nfields
+        @fields = @protocol.retr_fields(nfields)
+        @result = Result.new(@fields, @protocol)
+      end
+      return self unless return_result
+      return nil unless nfields
+      return @result
     rescue ServerError => e
       @last_error = e
       @sqlstate = e.sqlstate
@@ -369,11 +382,7 @@ class Mysql
   # Get all data for last query.
   # @return [Mysql::Result]
   def store_result
-    check_connection
-    raise ClientError, 'invalid usage' unless @result_exist
-    res = Result.new @fields, @protocol
-    @result_exist = false
-    res
+    @result
   end
 
   # @return [Integer] Thread ID
@@ -397,17 +406,20 @@ class Mysql
   end
 
   # execute next query if multiple queries are specified.
-  # @return [Boolean] true if next query exists.
-  def next_result
-    return false unless more_results?
-    check_connection
+  # @return [Mysql::Result] result set of query if return_result is true.
+  # @return [true] if return_result is false and result exists.
+  # @return [nil] query returns no results.
+  def next_result(return_result: true)
+    return nil unless more_results?
     @fields = nil
     nfields = @protocol.get_result
     if nfields
       @fields = @protocol.retr_fields nfields
-      @result_exist = true
+      @result = Result.new(@fields, @protocol)
     end
-    return true
+    return true unless return_result
+    return nil unless nfields
+    @result
   end
 
   # Parse prepared-statement.
@@ -594,6 +606,9 @@ class Mysql
 
     # @return [Array<Mysql::Field>] field list
     attr_reader :fields
+
+    # @return [Mysql::StatementResult]
+    attr_reader :result
 
     # @param [Array of Mysql::Field] fields
     def initialize(fields)
@@ -837,23 +852,43 @@ class Mysql
 
     # Execute prepared statement.
     # @param [Object] values values passed to query
-    # @return [Mysql::Stmt] self
-    def execute(*values)
+    # @return [Mysql::Result] if return_result is true and the query returns result set.
+    # @return [nil] if return_results is true and the query does not return result set.
+    # @return [self] if return_result is false or block is specified.
+    def execute(*values, return_result: true, yield_null_result: true, &block)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count
       values = values.map{|v| @protocol.charset.convert v}
       begin
         @sqlstate = "00000"
         @protocol.stmt_execute_command @statement_id, values
+        @fields = @result = nil
         nfields = @protocol.get_result
+        if block
+          while true
+            if nfields
+              @fields = @protocol.retr_fields nfields
+              block.call StatementResult.new(@fields, @protocol)
+            elsif yield_null_result
+              @affected_rows, @insert_id, @server_status, @warning_count, @info =
+                @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
+              block.call nil
+            end
+            break unless more_results?
+            nfields = @protocol.get_result
+          end
+          return self
+        end
         if nfields
           @fields = @protocol.retr_fields nfields
-          @result = StatementResult.new @fields, @protocol
+          @result = StatementResult.new(@fields, @protocol)
         else
           @affected_rows, @insert_id, @server_status, @warning_count, @info =
             @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
         end
-        return self
+        return self unless return_result
+        return nil unless nfields
+        return @result
       rescue ServerError => e
         @last_error = e
         @sqlstate = e.sqlstate
@@ -865,17 +900,28 @@ class Mysql
       @protocol.more_results?
     end
 
-    def next_result
-      return false unless more_results?
+    # execute next query if precedure is called.
+    # @return [Mysql::Result] result set of query if return_result is true.
+    # @return [true] if return_result is false and result exists.
+    # @return [nil] query returns no results or no more results.
+    def next_result(return_result: true)
+      return nil unless more_results?
+      @fields = @result = nil
       nfields = @protocol.get_result
       if nfields
         @fields = @protocol.retr_fields nfields
-        @result = StatementResult.new @fields, @protocol
+        @result = StatementResult.new(@fields, @protocol)
       else
         @affected_rows, @insert_id, @server_status, @warning_count, @info =
           @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
       end
-      return true
+      return true unless return_result
+      return nil unless nfields
+      return @result
+    rescue ServerError => e
+      @last_error = e
+      @sqlstate = e.sqlstate
+      raise
     end
 
     # Close prepared statement
