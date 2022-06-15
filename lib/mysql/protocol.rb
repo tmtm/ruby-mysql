@@ -112,6 +112,7 @@ class Mysql
     attr_reader :server_status
     attr_reader :warning_count
     attr_reader :message
+    attr_reader :session_track
     attr_reader :get_server_public_key
     attr_accessor :charset
 
@@ -144,6 +145,7 @@ class Mysql
       @charset = Mysql::Charset.by_name("utf8mb4")
       @insert_id = 0
       @warning_count = 0
+      @session_track = {}
       @gc_stmt_queue = []   # stmt id list which GC destroy.
       set_state :INIT
       @get_server_public_key = @opts[:get_server_public_key]
@@ -175,7 +177,7 @@ class Mysql
       @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
       @server_capabilities = init_packet.server_capabilities
       @thread_id = init_packet.thread_id
-      @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_ATTRS
+      @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_ATTRS | CLIENT_SESSION_TRACK
       @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile] || @opts[:load_data_local_dir]
       @client_flags |= CLIENT_CONNECT_WITH_DB if @opts[:database]
       @client_flags |= @opts[:flags]
@@ -256,8 +258,8 @@ class Mysql
           send_local_file(res_packet.message)
           res_packet = ResultPacket.parse read
         end
-        @affected_rows, @insert_id, @server_status, @warning_count, @message =
-          res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message
+        @affected_rows, @insert_id, @server_status, @warning_count, @message, @session_track =
+          res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message, res_packet.session_track
         set_state :READY unless more_results?
         return nil
       rescue
@@ -627,7 +629,10 @@ class Mysql
           server_status = pkt.ushort
           warning_count = pkt.ushort
           message = pkt.lcs
-          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, message)
+          session_track = parse_session_track(pkt.lcs) if server_status & SERVER_SESSION_STATE_CHANGED
+          message = pkt.lcs unless pkt.to_s.empty?
+
+          return self.new(field_count, affected_rows, insert_id, server_status, warning_count, message, session_track)
         elsif field_count.nil?   # LOAD DATA LOCAL INFILE
           return self.new(nil, nil, nil, nil, nil, pkt.to_s)
         else
@@ -635,10 +640,40 @@ class Mysql
         end
       end
 
-      attr_reader :field_count, :affected_rows, :insert_id, :server_status, :warning_count, :message
+      def self.parse_session_track(data)
+        session_track = {}
+        pkt = Packet.new(data.to_s)
+        until pkt.to_s.empty?
+          type = pkt.lcb
+          session_track[type] ||= []
+          case type
+          when SESSION_TRACK_SYSTEM_VARIABLES
+            p = Packet.new(pkt.lcs)
+            session_track[type].push [p.lcs, p.lcs]
+          when SESSION_TRACK_SCHEMA
+            pkt.lcb  # skip
+            session_track[type].push pkt.lcs
+          when SESSION_TRACK_STATE_CHANGE
+            session_track[type].push pkt.lcs
+          when SESSION_TRACK_GTIDS
+            pkt.lcb  # skip
+            pkt.lcb  # skip
+            session_track[type].push pkt.lcs
+          when SESSION_TRACK_TRANSACTION_CHARACTERISTICS, SESSION_TRACK_TRANSACTION_STATE
+            pkt.lcb  # skip
+            session_track[type].push pkt.lcs
+          else
+            # unkonwn type
+          end
+        end
+        session_track
+      end
+
+      attr_reader :field_count, :affected_rows, :insert_id, :server_status, :warning_count, :message, :session_track
 
       def initialize(*args)
-        @field_count, @affected_rows, @insert_id, @server_status, @warning_count, @message = args
+        @field_count, @affected_rows, @insert_id, @server_status, @warning_count, @message, @session_track = args
+        @session_track ||= {}
       end
     end
 

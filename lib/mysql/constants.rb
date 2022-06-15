@@ -168,6 +168,13 @@ class Mysql
   REFRESH_OPTIMIZER_COSTS  = 1 << 21
   REFRESH_PERSIST          = 1 << 22
 
+  SESSION_TRACK_SYSTEM_VARIABLES            = 0  # Session system variables
+  SESSION_TRACK_SCHEMA                      = 1  # Current schema
+  SESSION_TRACK_STATE_CHANGE                = 2  # track session state changes
+  SESSION_TRACK_GTIDS                       = 3  # See also: session_track_gtids
+  SESSION_TRACK_TRANSACTION_CHARACTERISTICS = 4  # Transaction chistics
+  SESSION_TRACK_TRANSACTION_STATE           = 5  # Transaction state
+
   class Field
     # Field type
     TYPE_DECIMAL     = 0

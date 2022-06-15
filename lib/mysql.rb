@@ -503,6 +503,12 @@ class Mysql
     self
   end
 
+  # session track
+  # @return [Hash]
+  def session_track
+    @protocol.session_track
+  end
+
   private
 
   def check_connection
