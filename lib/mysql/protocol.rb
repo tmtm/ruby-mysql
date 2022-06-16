@@ -471,9 +471,9 @@ class Mysql
         ret = read_timeout(len, @opts[:read_timeout])
         raise EOFError unless ret && ret.length == len
         data.concat ret
-      rescue EOFError
-        @socket.close rescue nil
-        raise ClientError::ServerGoneError, 'MySQL server has gone away'
+      rescue EOFError, OpenSSL::SSL::SSLError
+        close
+        raise ClientError::ServerLost, 'Lost connection to server during query'
       rescue Errno::ETIMEDOUT
         raise ClientError, "read timeout"
       end while len == MAX_PACKET_LENGTH
@@ -536,8 +536,8 @@ class Mysql
         end
         @socket.sync = true
         @socket.flush
-      rescue Errno::EPIPE
-        @socket.close rescue nil
+      rescue Errno::EPIPE, OpenSSL::SSL::SSLError
+        close
         raise ClientError::ServerGoneError, 'MySQL server has gone away'
       rescue Errno::ETIMEDOUT
         raise ClientError, "write timeout"

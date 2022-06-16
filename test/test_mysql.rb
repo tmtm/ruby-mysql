@@ -1696,8 +1696,8 @@ class TestMysql < Test::Unit::TestCase
   test 'disconnect from server' do
     m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     m.query('kill connection_id()') rescue nil
-    e = assert_raise(Mysql::ClientError::ServerGoneError){ m.query('select 1') }
-    assert{ e.message == 'MySQL server has gone away' }
+    e = assert_raise(Mysql::ClientError::ServerLost){ m.query('select 1') }
+    assert{ e.message == 'Lost connection to server during query' }
   end
 
   test 'disconnect from client' do
