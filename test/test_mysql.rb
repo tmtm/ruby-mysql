@@ -174,6 +174,9 @@ class TestMysql < Test::Unit::TestCase
       tmpf.close
       @m.local_infile = true
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      if @m.query('select @@local_infile').fetch[0] == '0'
+        omit 'skip because local_infile variable is false'
+      end
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
       assert{ @m.info == 'Records: 1  Deleted: 0  Skipped: 0  Warnings: 0' }
@@ -186,6 +189,9 @@ class TestMysql < Test::Unit::TestCase
       tmpf.close
       @m.load_data_local_dir = File.dirname(tmpf.path)
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      if @m.query('select @@local_infile').fetch[0] == '0'
+        omit 'skip because local_infile variable is false'
+      end
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
       assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
@@ -197,6 +203,9 @@ class TestMysql < Test::Unit::TestCase
       tmpf.close
       @m.load_data_local_dir = '/hoge'
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      if @m.query('select @@local_infile').fetch[0] == '0'
+        omit 'skip because local_infile variable is false'
+      end
       @m.query('create temporary table t (i int, c char(10))')
       assert_raise Mysql::ClientError::LoadDataLocalInfileRejected, 'LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.' do
         @m.query("load data local infile '#{tmpf.path}' into table t")
@@ -208,6 +217,9 @@ class TestMysql < Test::Unit::TestCase
       tmpf.puts "123\tabc\n"
       tmpf.close
       @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      if @m.query('select @@local_infile').fetch[0] == '0'
+        omit 'skip because local_infile variable is false'
+      end
       @m.query('create temporary table t (i int, c char(10))')
       if @m.server_version >= 80000
         assert_raise Mysql::ServerError, 'Loading local data is disabled; this must be enabled on both the client and server sides' do
@@ -853,7 +865,7 @@ class TestMysql < Test::Unit::TestCase
 
     teardown do
       @s.close if @s rescue nil
-      @m.close if @m
+      @m.close if @m rescue nil
     end
 
     test '#affected_rows returns number of affected records' do
