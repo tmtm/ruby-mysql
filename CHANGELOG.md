@@ -1,3 +1,11 @@
+## [3.0.1] - 2022-06-18
+
+- LICENSE: correct author
+- FIX: correct LOAD DATA LOCAL INFILE result information.
+- FIX: reset SERVER_MORE_RESULTS_EXISTS when error packet is received.
+- FIX: close the socket when the connection is disconnected.
+- FIX: allow multiple results by default.
+
 ## [3.0.0] - 2021-11-16
 
 - `Mysql.new` no longer connect. use `Mysql.connect` or `Mysql#connect`.

@@ -20,7 +20,7 @@ MYSQL_SOCKET   = ENV['MYSQL_SOCKET']
 class TestMysql < Test::Unit::TestCase
   sub_test_case 'Mysql::VERSION' do
     test 'returns client version' do
-      assert{ Mysql::VERSION == '3.0.0' }
+      assert{ Mysql::VERSION == '3.0.1' }
     end
   end
 

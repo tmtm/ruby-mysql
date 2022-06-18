@@ -19,7 +19,7 @@ class Mysql
   require_relative "mysql/protocol"
   require_relative "mysql/packet.rb"
 
-  VERSION            = '3.0.0'             # Version number of this library
+  VERSION            = '3.0.1'             # Version number of this library
   MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
