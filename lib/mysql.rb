@@ -303,8 +303,7 @@ class Mysql
 
   # @return [Integer] server version
   def server_version
-    check_connection
-    @protocol.server_version
+    @protocol&.server_version
   end
 
   # @return [String] information for last query
