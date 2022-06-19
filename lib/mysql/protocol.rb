@@ -231,13 +231,11 @@ class Mysql
 
     # Query command
     # @param query [String] query string
-    # @return [Integer, nil] number of fields of results. nil if no results.
     def query_command(query)
       synchronize(before: :READY, after: :WAIT_RESULT, error: :READY) do
         reset
         write [COM_QUERY, @charset.convert(query)].pack("Ca*")
       end
-      get_result
     end
 
     # get result of query.

@@ -350,7 +350,8 @@ class Mysql
     @fields = nil
     begin
       res = nil
-      nfields = @protocol.query_command str
+      @protocol.query_command str
+      nfields = @protocol.get_result
       if block
         while true
           if nfields
