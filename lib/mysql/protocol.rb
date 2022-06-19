@@ -141,6 +141,7 @@ class Mysql
     # @option :get_server_public_key [Boolean]
     # @raise [ClientError] connection timeout
     def initialize(opts)
+      @mutex = Mutex.new
       @opts = opts
       @charset = Mysql::Charset.by_name("utf8mb4")
       @insert_id = 0
@@ -170,26 +171,26 @@ class Mysql
     # @param charset [Mysql::Charset, nil] charset for connection. nil: use server's charset
     # @raise [ProtocolError] The old style password is not supported
     def authenticate
-      check_state :INIT
-      reset
-      init_packet = InitialPacket.parse read
-      @server_info = init_packet.server_version
-      @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
-      @server_capabilities = init_packet.server_capabilities
-      @thread_id = init_packet.thread_id
-      @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_ATTRS | CLIENT_SESSION_TRACK
-      @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile] || @opts[:load_data_local_dir]
-      @client_flags |= CLIENT_CONNECT_WITH_DB if @opts[:database]
-      @client_flags |= @opts[:flags]
-      if @opts[:charset]
-        @charset = @opts[:charset].is_a?(Charset) ? @opts[:charset] : Charset.by_name(@opts[:charset])
-      else
-        @charset = Charset.by_number(init_packet.server_charset)
-        @charset.encoding       # raise error if unsupported charset
+      synchronize(before: :INIT, after: :READY) do
+        reset
+        init_packet = InitialPacket.parse read
+        @server_info = init_packet.server_version
+        @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+        @server_capabilities = init_packet.server_capabilities
+        @thread_id = init_packet.thread_id
+        @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_ATTRS | CLIENT_SESSION_TRACK
+        @client_flags |= CLIENT_LOCAL_FILES if @opts[:local_infile] || @opts[:load_data_local_dir]
+        @client_flags |= CLIENT_CONNECT_WITH_DB if @opts[:database]
+        @client_flags |= @opts[:flags]
+        if @opts[:charset]
+          @charset = @opts[:charset].is_a?(Charset) ? @opts[:charset] : Charset.by_name(@opts[:charset])
+        else
+          @charset = Charset.by_number(init_packet.server_charset)
+          @charset.encoding       # raise error if unsupported charset
+        end
+        enable_ssl
+        Authenticator.new(self).authenticate(@opts[:username], @opts[:password].to_s, @opts[:database], init_packet.scramble_buff, init_packet.auth_plugin, @opts[:connect_attrs])
       end
-      enable_ssl
-      Authenticator.new(self).authenticate(@opts[:username], @opts[:password].to_s, @opts[:database], init_packet.scramble_buff, init_packet.auth_plugin, @opts[:connect_attrs])
-      set_state :READY
     end
 
     def enable_ssl
@@ -221,7 +222,7 @@ class Mysql
 
     # Quit command
     def quit_command
-      synchronize do
+      synchronize(before: :READY, after: :READY) do
         reset
         write [COM_QUIT].pack("C")
         close
@@ -232,23 +233,17 @@ class Mysql
     # @param query [String] query string
     # @return [Integer, nil] number of fields of results. nil if no results.
     def query_command(query)
-      check_state :READY
-      begin
+      synchronize(before: :READY, after: :WAIT_RESULT, error: :READY) do
         reset
         write [COM_QUERY, @charset.convert(query)].pack("Ca*")
-        set_state :WAIT_RESULT
-        get_result
-      rescue
-        set_state :READY
-        raise
       end
+      get_result
     end
 
     # get result of query.
     # @return [integer, nil] number of fields of results. nil if no results.
     def get_result
-      check_state :WAIT_RESULT
-      begin
+      synchronize(before: :WAIT_RESULT, error: :READY) do
         res_packet = ResultPacket.parse read
         if res_packet.field_count.to_i > 0  # result data exists
           set_state :FIELD
@@ -259,12 +254,9 @@ class Mysql
           res_packet = ResultPacket.parse read
         end
         @affected_rows, @insert_id, @server_status, @warning_count, @message, @session_track =
-          res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message, res_packet.session_track
+                                                                              res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message, res_packet.session_track
         set_state :READY unless more_results?
         return nil
-      rescue
-        set_state :READY
-        raise
       end
     end
 
@@ -288,15 +280,10 @@ class Mysql
     # @param n [Integer] number of fields
     # @return [Array<Mysql::Field>] field list
     def retr_fields(n)
-      check_state :FIELD
-      begin
+      synchronize(before: :FIELD, after: :RESULT, error: :READY) do
         fields = n.times.map{Field.new FieldPacket.parse(read)}
         read_eof_packet
-        set_state :RESULT
         fields
-      rescue
-        set_state :READY
-        raise
       end
     end
 
@@ -304,19 +291,20 @@ class Mysql
     # @param fields [Array<Mysql::Field>] number of fields
     # @return [Array<Array<String>>] all records
     def retr_all_records(fields)
-      check_state :RESULT
-      enc = charset.encoding
-      begin
-        all_recs = []
-        until (pkt = read).eof?
-          all_recs.push RawRecord.new(pkt, fields, enc)
+      synchronize(before: :RESULT) do
+        enc = charset.encoding
+        begin
+          all_recs = []
+          until (pkt = read).eof?
+            all_recs.push RawRecord.new(pkt, fields, enc)
+          end
+          pkt.utiny  # 0xFE
+          _warnings = pkt.ushort
+          @server_status = pkt.ushort
+          all_recs
+        ensure
+          set_state(more_results? ? :WAIT_RESULT : :READY)
         end
-        pkt.utiny  # 0xFE
-        _warnings = pkt.ushort
-        @server_status = pkt.ushort
-        all_recs
-      ensure
-        set_state(more_results? ? :WAIT_RESULT : :READY)
       end
     end
 
@@ -354,7 +342,7 @@ class Mysql
     # @param stmt [String] prepared statement
     # @return [Array<Integer, Integer, Array<Field>>] statement id, number of parameters, field list
     def stmt_prepare_command(stmt)
-      synchronize do
+      synchronize(before: :READY, after: :READY) do
         reset
         write [COM_STMT_PREPARE, charset.convert(stmt)].pack("Ca*")
         res_packet = PrepareResultPacket.parse read
@@ -377,14 +365,9 @@ class Mysql
     # @param values [Array] parameters
     # @return [Integer] number of fields
     def stmt_execute_command(stmt_id, values)
-      check_state :READY
-      begin
+      synchronize(before: :READY, after: :WAIT_RESULT, error: :READY) do
         reset
         write ExecutePacket.serialize(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
-        set_state :WAIT_RESULT
-      rescue
-        set_state :READY
-        raise
       end
     end
 
@@ -393,26 +376,27 @@ class Mysql
     # @param charset [Mysql::Charset]
     # @return [Array<Array<Object>>] all records
     def stmt_retr_all_records(fields, charset)
-      check_state :RESULT
-      enc = charset.encoding
-      begin
-        all_recs = []
-        until (pkt = read).eof?
-          all_recs.push StmtRawRecord.new(pkt, fields, enc)
+      synchronize(before: :RESULT) do
+        enc = charset.encoding
+        begin
+          all_recs = []
+          until (pkt = read).eof?
+            all_recs.push StmtRawRecord.new(pkt, fields, enc)
+          end
+          pkt.utiny  # 0xFE
+          _warnings = pkt.ushort
+          @server_status = pkt.ushort
+          all_recs
+        ensure
+          set_state(more_results? ? :WAIT_RESULT : :READY)
         end
-        pkt.utiny  # 0xFE
-        _warnings = pkt.ushort
-        @server_status = pkt.ushort
-        all_recs
-      ensure
-        set_state(more_results? ? :WAIT_RESULT : :READY)
       end
     end
 
     # Stmt close command
     # @param stmt_id [Integer] statement id
     def stmt_close_command(stmt_id)
-      synchronize do
+      synchronize(before: :READY, after: :READY) do
         reset
         write [COM_STMT_CLOSE, stmt_id].pack("CV")
       end
@@ -441,12 +425,18 @@ class Mysql
       end
     end
 
-    def synchronize
-      begin
-        check_state :READY
-        return yield
-      ensure
-        set_state :READY
+    def synchronize(before: nil, after: nil, error: nil)
+      @mutex.synchronize do
+        check_state before if before
+        begin
+          return yield
+        rescue
+          set_state error if error
+          raised = true
+          raise
+        ensure
+          set_state after if after && !raised
+        end
       end
     end
 
@@ -578,7 +568,7 @@ class Mysql
     # @param packet :: [String] packet data
     # @return [String] received data
     def simple_command(packet)
-      synchronize do
+      synchronize(before: :READY, after: :READY) do
         reset
         write packet
         read.to_s
