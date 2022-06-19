@@ -29,7 +29,7 @@ class Mysql
             if @protocol.client_flags & CLIENT_SSL != 0
               @protocol.write passwd+"\0"
             elsif !@protocol.get_server_public_key
-              raise 'Authentication requires secure connection'
+              raise ClientError::AuthPluginErr, 'Authentication requires secure connection'
             else
               @protocol.write "\2"  # request public key
               pkt = @protocol.read
@@ -40,7 +40,7 @@ class Mysql
               @protocol.write enc
             end
           else
-            raise "invalid auth reply packet: #{data.inspect}"
+            raise ClientError, "invalid auth reply packet: #{data.inspect}"
           end
           pkt = @protocol.read
         end
