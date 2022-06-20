@@ -117,10 +117,11 @@ class Mysql
     attr_accessor :charset
 
     # @state variable keep state for connection.
-    # :INIT   :: Initial state.
-    # :READY  :: Ready for command.
-    # :FIELD  :: After query(). retr_fields() is needed.
-    # :RESULT :: After retr_fields(), retr_all_records() or stmt_retr_all_records() is needed.
+    # :INIT        :: Initial state.
+    # :READY       :: Ready for command.
+    # :WAIT_RESULT :: After query_command(). get_result() is needed.
+    # :FIELD       :: After get_result(). retr_fields() is needed.
+    # :RESULT      :: After retr_fields(), retr_all_records() or stmt_retr_all_records() is needed.
 
     # make socket connection to server.
     # @param opts [Hash]
