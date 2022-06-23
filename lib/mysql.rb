@@ -355,7 +355,7 @@ class Mysql
       if block
         while true
           if nfields
-            @fields = @protocol.retr_fields(nfields)
+            @fields = @protocol.retr_fields
             block.call Result.new(@fields, @protocol)
           elsif yield_null_result
             block.call nil
@@ -366,7 +366,7 @@ class Mysql
         return self
       end
       if nfields
-        @fields = @protocol.retr_fields(nfields)
+        @fields = @protocol.retr_fields
         @result = Result.new(@fields, @protocol)
       end
       return self unless return_result
@@ -414,7 +414,7 @@ class Mysql
     @fields = nil
     nfields = @protocol.get_result
     if nfields
-      @fields = @protocol.retr_fields nfields
+      @fields = @protocol.retr_fields
       @result = Result.new(@fields, @protocol)
     end
     return true unless return_result
@@ -721,8 +721,13 @@ class Mysql
     def initialize(fields, protocol=nil)
       super fields
       return unless protocol
-      @records = protocol.retr_all_records fields
+      @protocol = protocol
       fields.each{|f| f.result = self}  # for calculating max_field
+      retrieve
+    end
+
+    def retrieve
+      @records = @protocol.retr_all_records(RawRecord)
     end
 
     # @private
@@ -795,7 +800,12 @@ class Mysql
     # @param [Mysql::Protocol] protocol
     def initialize(fields, protocol)
       super fields
-      @records = protocol.stmt_retr_all_records @fields, protocol.charset
+      @protocol = protocol
+      retrieve
+    end
+
+    def retrieve
+      @records = @protocol.retr_all_records(StmtRawRecord)
     end
   end
 
@@ -873,7 +883,7 @@ class Mysql
         if block
           while true
             if nfields
-              @fields = @protocol.retr_fields nfields
+              @fields = @protocol.retr_fields
               block.call StatementResult.new(@fields, @protocol)
             elsif yield_null_result
               @affected_rows, @insert_id, @server_status, @warning_count, @info =
@@ -886,7 +896,7 @@ class Mysql
           return self
         end
         if nfields
-          @fields = @protocol.retr_fields nfields
+          @fields = @protocol.retr_fields
           @result = StatementResult.new(@fields, @protocol)
         else
           @affected_rows, @insert_id, @server_status, @warning_count, @info =
@@ -915,7 +925,7 @@ class Mysql
       @fields = @result = nil
       nfields = @protocol.get_result
       if nfields
-        @fields = @protocol.retr_fields nfields
+        @fields = @protocol.retr_fields
         @result = StatementResult.new(@fields, @protocol)
       else
         @affected_rows, @insert_id, @server_status, @warning_count, @info =

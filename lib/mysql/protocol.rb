@@ -121,7 +121,7 @@ class Mysql
     # :READY       :: Ready for command.
     # :WAIT_RESULT :: After query_command(). get_result() is needed.
     # :FIELD       :: After get_result(). retr_fields() is needed.
-    # :RESULT      :: After retr_fields(), retr_all_records() or stmt_retr_all_records() is needed.
+    # :RESULT      :: After retr_fields(), retr_all_records() is needed.
 
     # make socket connection to server.
     # @param opts [Hash]
@@ -244,11 +244,12 @@ class Mysql
     def get_result
       synchronize(before: :WAIT_RESULT, error: :READY) do
         res_packet = ResultPacket.parse read
-        if res_packet.field_count.to_i > 0  # result data exists
+        @field_count = res_packet.field_count
+        if @field_count.to_i > 0  # result data exists
           set_state :FIELD
-          return res_packet.field_count
+          return @field_count
         end
-        if res_packet.field_count.nil?      # LOAD DATA LOCAL INFILE
+        if @field_count.nil?      # LOAD DATA LOCAL INFILE
           send_local_file(res_packet.message)
           res_packet = ResultPacket.parse read
         end
@@ -276,26 +277,25 @@ class Mysql
     end
 
     # Retrieve n fields
-    # @param n [Integer] number of fields
     # @return [Array<Mysql::Field>] field list
-    def retr_fields(n)
+    def retr_fields
       synchronize(before: :FIELD, after: :RESULT, error: :READY) do
-        fields = n.times.map{Field.new FieldPacket.parse(read)}
+        @fields = @field_count.times.map{Field.new FieldPacket.parse(read)}
         read_eof_packet
-        fields
+        @fields
       end
     end
 
-    # Retrieve all records for simple query
-    # @param fields [Array<Mysql::Field>] number of fields
+    # Retrieve all records for simple query or prepared statement
+    # @param record_class [RawRecord or StmtRawRecord]
     # @return [Array<Array<String>>] all records
-    def retr_all_records(fields)
+    def retr_all_records(record_class)
       synchronize(before: :RESULT) do
         enc = charset.encoding
         begin
           all_recs = []
           until (pkt = read).eof?
-            all_recs.push RawRecord.new(pkt, fields, enc)
+            all_recs.push record_class.new(pkt, @fields, enc)
           end
           pkt.utiny  # 0xFE
           _warnings = pkt.ushort
@@ -367,28 +367,6 @@ class Mysql
       synchronize(before: :READY, after: :WAIT_RESULT, error: :READY) do
         reset
         write ExecutePacket.serialize(stmt_id, Mysql::Stmt::CURSOR_TYPE_NO_CURSOR, values)
-      end
-    end
-
-    # Retrieve all records for prepared statement
-    # @param fields [Array of Mysql::Fields] field list
-    # @param charset [Mysql::Charset]
-    # @return [Array<Array<Object>>] all records
-    def stmt_retr_all_records(fields, charset)
-      synchronize(before: :RESULT) do
-        enc = charset.encoding
-        begin
-          all_recs = []
-          until (pkt = read).eof?
-            all_recs.push StmtRawRecord.new(pkt, fields, enc)
-          end
-          pkt.utiny  # 0xFE
-          _warnings = pkt.ushort
-          @server_status = pkt.ushort
-          all_recs
-        ensure
-          set_state(more_results? ? :WAIT_RESULT : :READY)
-        end
       end
     end
 
