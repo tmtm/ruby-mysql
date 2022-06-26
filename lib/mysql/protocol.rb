@@ -223,6 +223,9 @@ class Mysql
 
     # Quit command
     def quit_command
+      get_result if @state == :WAIT_RESULT
+      retr_fields if @state == :FIELD
+      retr_all_records(RawRecord) if @state == :RESULT
       synchronize(before: :READY, after: :READY) do
         reset
         write [COM_QUIT].pack("C")
@@ -394,6 +397,9 @@ class Mysql
     # Stmt close command
     # @param stmt_id [Integer] statement id
     def stmt_close_command(stmt_id)
+      get_result if @state == :WAIT_RESULT
+      retr_fields if @state == :FIELD
+      retr_all_records(StmtRawRecord) if @state == :RESULT
       synchronize(before: :READY, after: :READY) do
         reset
         write [COM_STMT_CLOSE, stmt_id].pack("CV")
