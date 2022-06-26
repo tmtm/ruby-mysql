@@ -429,13 +429,14 @@ class Mysql
       data = ''
       len = nil
       begin
-        header = read_timeout(4, @opts[:read_timeout])
+        timeout = @state == :INIT ? @opts[:connect_timeout] : @opts[:read_timeout]
+        header = read_timeout(4, timeout)
         raise EOFError unless header && header.length == 4
         len1, len2, seq = header.unpack("CvC")
         len = (len2 << 8) + len1
         raise ProtocolError, "invalid packet: sequence number mismatch(#{seq} != #{@seq}(expected))" if @seq != seq
         @seq = (@seq + 1) % 256
-        ret = read_timeout(len, @opts[:read_timeout])
+        ret = read_timeout(len, timeout)
         raise EOFError unless ret && ret.length == len
         data.concat ret
       rescue EOFError, OpenSSL::SSL::SSLError
@@ -490,14 +491,15 @@ class Mysql
     # @param data [String, IO, nil] packet data. If data is nil, write empty packet.
     def write(data)
       begin
+        timeout = @state == :INIT ? @opts[:connect_timeout] : @opts[:write_timeout]
         @socket.sync = false
         if data.nil?
-          write_timeout([0, 0, @seq].pack("CvC"), @opts[:write_timeout])
+          write_timeout([0, 0, @seq].pack("CvC"), timeout)
           @seq = (@seq + 1) % 256
         else
           data = StringIO.new data if data.is_a? String
           while d = data.read(MAX_PACKET_LENGTH)
-            write_timeout([d.length%256, d.length/256, @seq].pack("CvC")+d, @opts[:write_timeout])
+            write_timeout([d.length%256, d.length/256, @seq].pack("CvC")+d, timeout)
             @seq = (@seq + 1) % 256
           end
         end
