@@ -605,6 +605,7 @@ class Mysql
 
     # @return [Array<Mysql::Field>] field list
     attr_reader :fields
+    alias fetch_fields fields
 
     # @return [Mysql::StatementResult]
     attr_reader :result
@@ -740,52 +741,6 @@ class Mysql
       max_length.each_with_index do |len, i|
         @fields[i].max_length = len
       end
-    end
-
-    # @return [Mysql::Field] current field
-    def fetch_field
-      return nil if @field_index >= @fields.length
-      ret = @fields[@field_index]
-      @field_index += 1
-      ret
-    end
-
-    # @return [Integer] current field position
-    def field_tell
-      @field_index
-    end
-
-    # Set field position
-    # @param [Integer] n field index
-    # @return [Integer] previous position
-    def field_seek(n)
-      ret = @field_index
-      @field_index = n
-      ret
-    end
-
-    # Return specified field
-    # @param [Integer] n field index
-    # @return [Mysql::Field] field
-    def fetch_field_direct(n)
-      raise ClientError, "invalid argument: #{n}" if n < 0 or n >= @fields.length
-      @fields[n]
-    end
-
-    # @return [Array<Mysql::Field>] all fields
-    def fetch_fields
-      @fields
-    end
-
-    # @return [Array<Integer>] length of each fields
-    def fetch_lengths
-      return nil unless @fetched_record
-      @fetched_record.map{|c|c.nil? ? 0 : c.length}
-    end
-
-    # @return [Integer] number of fields
-    def num_fields
-      @fields.size
     end
   end
 
@@ -1014,7 +969,7 @@ class Mysql
     end
 
     # Returns Mysql::Result object that is empty.
-    # Use fetch_fields to get list of fields.
+    # Use fields to get list of fields.
     # @return [Mysql::Result]
     def result_metadata
       return nil if @fields.empty?

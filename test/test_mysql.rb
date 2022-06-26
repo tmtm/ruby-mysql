@@ -617,8 +617,8 @@ class TestMysql < Test::Unit::TestCase
       assert{ @res.fetch_row == ['2', 'defg'] }
     end
 
-    test '#fetch_field return current field' do
-      f = @res.fetch_field
+    test '#fields returns array of field' do
+      f = @res.fields[0]
       assert{ f.name == 'id' }
       assert{ f.table == 't' }
       assert{ f.def == nil }
@@ -628,7 +628,7 @@ class TestMysql < Test::Unit::TestCase
       assert{ f.flags == Mysql::Field::NUM_FLAG|Mysql::Field::PRI_KEY_FLAG|Mysql::Field::PART_KEY_FLAG|Mysql::Field::NOT_NULL_FLAG }
       assert{ f.decimals == 0 }
 
-      f = @res.fetch_field
+      f = @res.fields[1]
       assert{ f.name == 'str' }
       assert{ f.table == 't' }
       assert{ f.def == nil }
@@ -638,7 +638,7 @@ class TestMysql < Test::Unit::TestCase
       assert{ f.flags == 0 }
       assert{ f.decimals == 0 }
 
-      assert{ @res.fetch_field == nil }
+      assert{ @res.fields[2] == nil }
     end
 
     test '#fetch_fields returns array of fields' do
@@ -646,33 +646,6 @@ class TestMysql < Test::Unit::TestCase
       assert{ ret.size == 2 }
       assert{ ret[0].name == 'id' }
       assert{ ret[1].name == 'str' }
-    end
-
-    test '#fetch_field_direct returns field' do
-      f = @res.fetch_field_direct 0
-      assert{ f.name == 'id' }
-      f = @res.fetch_field_direct 1
-      assert{ f.name == 'str' }
-      assert_raise Mysql::ClientError, 'invalid argument: -1' do
-        @res.fetch_field_direct(-1)
-      end
-      assert_raise Mysql::ClientError, 'invalid argument: 2' do
-        @res.fetch_field_direct 2
-      end
-    end
-
-    test '#fetch_lengths returns array of length of field data' do
-      assert{ @res.fetch_lengths == nil }
-      @res.fetch_row
-      assert{ @res.fetch_lengths == [1, 3] }
-      @res.fetch_row
-      assert{ @res.fetch_lengths == [1, 4] }
-      @res.fetch_row
-      assert{ @res.fetch_lengths == [1, 2] }
-      @res.fetch_row
-      assert{ @res.fetch_lengths == [1, 0] }
-      @res.fetch_row
-      assert{ @res.fetch_lengths == nil }
     end
 
     test '#fetch_row returns one record as array for current record' do
@@ -697,10 +670,6 @@ class TestMysql < Test::Unit::TestCase
       assert{ @res.fetch_hash(true) == {'t.id'=>'3', 't.str'=>'hi'} }
       assert{ @res.fetch_hash(true) == {'t.id'=>'4', 't.str'=>nil} }
       assert{ @res.fetch_hash(true) == nil }
-    end
-
-    test '#num_fields returns number of fields' do
-      assert{ @res.num_fields == 2 }
     end
 
     test '#num_rows returns number of records' do
@@ -737,16 +706,6 @@ class TestMysql < Test::Unit::TestCase
       assert{ @res.fetch_row == ['2', 'defg'] }
     end
 
-    test '#field_tell returns position of current field, #field_seek set position of current field' do
-      assert{ @res.field_tell == 0 }
-      @res.fetch_field
-      assert{ @res.field_tell == 1 }
-      @res.fetch_field
-      assert{ @res.field_tell == 2 }
-      @res.field_seek 1
-      assert{ @res.field_tell == 1 }
-    end
-
     test '#free returns nil' do
       assert{ @res.free == nil }
     end
@@ -766,43 +725,43 @@ class TestMysql < Test::Unit::TestCase
     end
 
     test '#name is name of field' do
-      assert{ @res.fetch_field.name == 'id' }
+      assert{ @res.fields[0].name == 'id' }
     end
 
     test '#table is name of table for field' do
-      assert{ @res.fetch_field.table == 't' }
+      assert{ @res.fields[0].table == 't' }
     end
 
     test '#def for result set is null' do
-      assert{ @res.fetch_field.def == nil }
+      assert{ @res.fields[0].def == nil }
     end
 
     test '#type is type of field as Integer' do
-      assert{ @res.fetch_field.type == Mysql::Field::TYPE_LONG }
-      assert{ @res.fetch_field.type == Mysql::Field::TYPE_STRING }
+      assert{ @res.fields[0].type == Mysql::Field::TYPE_LONG }
+      assert{ @res.fields[1].type == Mysql::Field::TYPE_STRING }
     end
 
     test '#length is length of field' do
-      assert{ @res.fetch_field.length == 11 }
-      assert{ @res.fetch_field.length == 10 }
+      assert{ @res.fields[0].length == 11 }
+      assert{ @res.fields[1].length == 10 }
     end
 
     test '#max_length is maximum length of field value' do
-      assert{ @res.fetch_field.max_length == 1 }
-      assert{ @res.fetch_field.max_length == 4 }
+      assert{ @res.fields[0].max_length == 1 }
+      assert{ @res.fields[1].max_length == 4 }
     end
 
     test '#flags is flag of field as Integer' do
-      assert{ @res.fetch_field.flags == Mysql::Field::NUM_FLAG|Mysql::Field::PRI_KEY_FLAG|Mysql::Field::PART_KEY_FLAG|Mysql::Field::NOT_NULL_FLAG }
-      assert{ @res.fetch_field.flags == 0 }
+      assert{ @res.fields[0].flags == Mysql::Field::NUM_FLAG|Mysql::Field::PRI_KEY_FLAG|Mysql::Field::PART_KEY_FLAG|Mysql::Field::NOT_NULL_FLAG }
+      assert{ @res.fields[1].flags == 0 }
     end
 
     test '#decimals is number of decimal digits' do
-      assert{ @m.query('select 1.23').fetch_field.decimals == 2 }
+      assert{ @m.query('select 1.23').fields[0].decimals == 2 }
     end
 
     test '#to_hash return field as hash' do
-      assert{ @res.fetch_field.to_hash == {
+      assert{ @res.fields[0].to_hash == {
           'name'       => 'id',
           'table'      => 't',
           'def'        => nil,
@@ -813,7 +772,7 @@ class TestMysql < Test::Unit::TestCase
           'decimals'   => 0,
         }
       }
-      assert{ @res.fetch_field.to_hash == {
+      assert{ @res.fields[1].to_hash == {
           'name'       => 'str',
           'table'      => 't',
           'def'        => nil,
@@ -827,23 +786,23 @@ class TestMysql < Test::Unit::TestCase
     end
 
     test '#inspect returns "#<Mysql::Field:name>"' do
-      assert{ @res.fetch_field.inspect == '#<Mysql::Field:id>' }
-      assert{ @res.fetch_field.inspect == '#<Mysql::Field:str>' }
+      assert{ @res.fields[0].inspect == '#<Mysql::Field:id>' }
+      assert{ @res.fields[1].inspect == '#<Mysql::Field:str>' }
     end
 
     test '#is_num? returns true if the field is numeric' do
-      assert{ @res.fetch_field.is_num? == true }
-      assert{ @res.fetch_field.is_num? == false }
+      assert{ @res.fields[0].is_num? == true }
+      assert{ @res.fields[1].is_num? == false }
     end
 
     test '#is_not_null? returns true if the field is not null' do
-      assert{ @res.fetch_field.is_not_null? == true }
-      assert{ @res.fetch_field.is_not_null? == false }
+      assert{ @res.fields[0].is_not_null? == true }
+      assert{ @res.fields[1].is_not_null? == false }
     end
 
     test '#is_pri_key? returns true if the field is primary key' do
-      assert{ @res.fetch_field.is_pri_key? == true }
-      assert{ @res.fetch_field.is_pri_key? == false }
+      assert{ @res.fields[0].is_pri_key? == true }
+      assert{ @res.fields[1].is_pri_key? == false }
     end
   end
 
