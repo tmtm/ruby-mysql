@@ -114,6 +114,7 @@ class Mysql
     attr_reader :message
     attr_reader :session_track
     attr_reader :get_server_public_key
+    attr_reader :field_count
     attr_accessor :charset
 
     # @state variable keep state for connection.
@@ -286,9 +287,29 @@ class Mysql
       end
     end
 
+    # Retrieve one record for simple query or prepared statement
+    # @param record_class [RawRecord or StmtRawRecord]
+    # @return [<record_class>] record
+    # @return [nil] no more record
+    def retr_record(record_class)
+      synchronize(before: :RESULT) do
+        enc = charset.encoding
+        begin
+          unless (pkt = read).eof?
+            return record_class.new(pkt, @fields, enc)
+          end
+          pkt.utiny
+          pkt.ushort
+          @server_status = pkt.ushort
+          set_state(more_results? ? :WAIT_RESULT : :READY)
+          return nil
+        end
+      end
+    end
+
     # Retrieve all records for simple query or prepared statement
     # @param record_class [RawRecord or StmtRawRecord]
-    # @return [Array<Array<String>>] all records
+    # @return [Array<record_class>] all records
     def retr_all_records(record_class)
       synchronize(before: :RESULT) do
         enc = charset.encoding

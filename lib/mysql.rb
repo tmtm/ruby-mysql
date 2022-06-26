@@ -345,33 +345,23 @@ class Mysql
   # @example
   #  my.query("select 1,NULL,'abc'").fetch  # => [1, nil, "abc"]
   #  my.query("select 1,NULL,'abc'"){|res| res.fetch}
-  def query(str, return_result: true, yield_null_result: true, &block)
+  def query(str, return_result: true, yield_null_result: true, bulk_retrieve: true, &block)
     check_connection
     @fields = nil
     begin
-      res = nil
       @protocol.query_command str
-      nfields = @protocol.get_result
       if block
         while true
-          if nfields
-            @fields = @protocol.retr_fields
-            block.call Result.new(@fields, @protocol)
-          elsif yield_null_result
-            block.call nil
-          end
+          @protocol.get_result
+          res = store_result(bulk_retrieve: bulk_retrieve)
+          block.call res if res || yield_null_result
           break unless more_results?
-          nfields = @protocol.get_result
         end
         return self
       end
-      if nfields
-        @fields = @protocol.retr_fields
-        @result = Result.new(@fields, @protocol)
-      end
+      @protocol.get_result
       return self unless return_result
-      return nil unless nfields
-      return @result
+      return store_result(bulk_retrieve: bulk_retrieve)
     rescue ServerError => e
       @last_error = e
       @sqlstate = e.sqlstate
@@ -380,9 +370,13 @@ class Mysql
   end
 
   # Get all data for last query.
+  # @param bulk_retrieve [Boolean]
   # @return [Mysql::Result]
-  def store_result
-    @result
+  # @return [nil] if no results
+  def store_result(bulk_retrieve: true)
+    return nil if @protocol.field_count.nil? || @protocol.field_count == 0
+    @fields = @protocol.retr_fields
+    @result = Result.new(@fields, @protocol, bulk_retrieve: bulk_retrieve)
   end
 
   # @return [Integer] Thread ID
@@ -411,15 +405,10 @@ class Mysql
   # @return [nil] query returns no results.
   def next_result(return_result: true)
     return nil unless more_results?
+    @protocol.get_result
     @fields = nil
-    nfields = @protocol.get_result
-    if nfields
-      @fields = @protocol.retr_fields
-      @result = Result.new(@fields, @protocol)
-    end
-    return true unless return_result
-    return nil unless nfields
-    @result
+    return store_result if return_result
+    true
   end
 
   # Parse prepared-statement.
@@ -617,13 +606,19 @@ class Mysql
     attr_reader :result
 
     # @param [Array of Mysql::Field] fields
-    def initialize(fields)
+    def initialize(fields, protocol, record_class)
       @fields = fields
       @field_index = 0             # index of field
-      @records = []                # all records
+      @records = nil               # all records
       @index = 0                   # index of record
       @fieldname_with_table = nil
       @fetched_record = nil
+      @protocol = protocol
+      @record_class = record_class
+    end
+
+    def retrieve
+      @records = @protocol.retr_all_records(@record_class)
     end
 
     # ignore
@@ -640,6 +635,7 @@ class Mysql
     # @return [Array] current record data
     def fetch
       @fetched_record = nil
+      return @protocol.retr_record(@record_class)&.to_a unless @records
       return nil if @index >= @records.size
       @records[@index] = @records[@index].to_a unless @records[@index].is_a? Array
       @fetched_record = @records[@index]
@@ -718,21 +714,18 @@ class Mysql
     # @private
     # @param [Array<Mysql::Field>] fields
     # @param [Mysql::Protocol] protocol
-    def initialize(fields, protocol=nil)
-      super fields
+    # @param [Boolean] bulk_retrieve
+    def initialize(fields, protocol=nil, bulk_retrieve: true)
+      super fields, protocol, RawRecord
       return unless protocol
-      @protocol = protocol
       fields.each{|f| f.result = self}  # for calculating max_field
-      retrieve
-    end
-
-    def retrieve
-      @records = @protocol.retr_all_records(RawRecord)
+      retrieve if bulk_retrieve
     end
 
     # @private
     # calculate max_length of all fields
     def calculate_field_max_length
+      return unless @records
       max_length = Array.new(@fields.size, 0)
       @records.each_with_index do |rec, i|
         rec = @records[i] = rec.to_a if rec.is_a? RawRecord
@@ -798,14 +791,9 @@ class Mysql
     # @private
     # @param [Array<Mysql::Field>] fields
     # @param [Mysql::Protocol] protocol
-    def initialize(fields, protocol)
-      super fields
-      @protocol = protocol
-      retrieve
-    end
-
-    def retrieve
-      @records = @protocol.retr_all_records(StmtRawRecord)
+    def initialize(fields, protocol, bulk_retrieve: true)
+      super fields, protocol, StmtRawRecord
+      retrieve if bulk_retrieve
     end
   end
 
@@ -917,7 +905,7 @@ class Mysql
     end
 
     # execute next query if precedure is called.
-    # @return [Mysql::Result] result set of query if return_result is true.
+    # @return [Mysql::StatementResult] result set of query if return_result is true.
     # @return [true] if return_result is false and result exists.
     # @return [nil] query returns no results or no more results.
     def next_result(return_result: true)

@@ -400,12 +400,11 @@ class TestMysql < Test::Unit::TestCase
       end
       test 'returns self if return_result is false' do
         assert{ @m.query('select 123', return_result: false) == @m }
-        assert{ @m.result != nil }
         assert{ @m.store_result.entries == [['123']] }
       end
       test 'if return_result is false and query returns no result' do
         assert{ @m.query('set @hoge=123', return_result: false) == @m }
-        assert{ @m.result == nil }
+        assert{ @m.store_result == nil }
       end
       test 'if yield_null_result is true' do
         expects = [[['1']], nil, [['2']]]
