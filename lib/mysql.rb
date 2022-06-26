@@ -51,6 +51,8 @@ class Mysql
   #   @return [String, nil]
   # @!attribute [rw] ssl_mode
   #   @return [String, Integer] 1 or "disabled" / 2 or "preferred" / 3 or "required"
+  # @!attribute [rw] ssl_context_params
+  #   @return [Hash] See OpenSSL::SSL::Context#set_params
   # @!attribute [rw] get_server_public_key
   #   @return [Boolean]
   # @!attribute [rw] connect_attrs
@@ -71,6 +73,7 @@ class Mysql
     local_infile: nil,
     load_data_local_dir: nil,
     ssl_mode: SSL_MODE_PREFERRED,
+    ssl_context_params: {},
     get_server_public_key: false,
     connect_attrs: {},
   }.freeze
@@ -144,6 +147,7 @@ class Mysql
   #   @option opts :local_infile [Boolean]
   #   @option opts :load_data_local_dir [String]
   #   @option opts :ssl_mode [Integer]
+  #   @option opts :ssl_context_params [Hash<Symbol, String>]
   #   @option opts :get_server_public_key [Boolean]
   #   @option opts :connect_attrs [Hash]
   def initialize(*args, **opts)

@@ -140,6 +140,7 @@ class Mysql
     # @option :local_infile [Boolean]
     # @option :load_data_local_dir [String]
     # @option :ssl_mode [Integer]
+    # @option :ssl_context_params [Hash<:Symbol, String>]
     # @option :get_server_public_key [Boolean]
     # @raise [ClientError] connection timeout
     def initialize(opts)
@@ -194,31 +195,61 @@ class Mysql
       end
     end
 
+    SSL_MODE_KEY               = {
+      SSL_MODE_DISABLED        => 1,
+      SSL_MODE_PREFERRED       => 2,
+      SSL_MODE_REQUIRED        => 3,
+      SSL_MODE_VERIFY_CA       => 4,
+      SSL_MODE_VERIFY_IDENTITY => 5,
+      '1'                      => 1,
+      '2'                      => 2,
+      '3'                      => 3,
+      '4'                      => 4,
+      '5'                      => 5,
+      'disabled'               => 1,
+      'preferred'              => 2,
+      'required'               => 3,
+      'verify_ca'              => 4,
+      'verify_identity'        => 5,
+    }
+
     def enable_ssl
-      case @opts[:ssl_mode]
-      when SSL_MODE_DISABLED, '1', 'disabled'
-        return
-      when SSL_MODE_PREFERRED, '2', 'preferred'
+      ssl_mode = SSL_MODE_KEY[@opts[:ssl_mode]]
+      raise ClientError, "ssl_mode #{@opts[:ssl_mode]} is not supported" unless ssl_mode
+
+      return if ssl_mode == SSL_MODE_DISABLED
+      if ssl_mode == SSL_MODE_PREFERRED
         return if @socket.local_address.unix?
         return if @server_capabilities & CLIENT_SSL == 0
-      when SSL_MODE_REQUIRED, '3', 'required'
+      end
+      if ssl_mode >= SSL_MODE_REQUIRED
         if @server_capabilities & CLIENT_SSL == 0
           raise ClientError::SslConnectionError, "SSL is required but the server doesn't support it"
         end
-      else
-        raise ClientError, "ssl_mode #{@opts[:ssl_mode]} is not supported"
       end
-      begin
-        @client_flags |= CLIENT_SSL
-        write Protocol::TlsAuthenticationPacket.serialize(@client_flags, 1024**3, @charset.number)
-        @socket = OpenSSL::SSL::SSLSocket.new(@socket)
-        @socket.sync_close = true
-        @socket.connect
-      rescue => e
-        @client_flags &= ~CLIENT_SSL
-        return if @opts[:ssl_mode] == SSL_MODE_PREFERRED
-        raise e
-      end
+
+      context = OpenSSL::SSL::SSLContext.new
+      context.set_params(@opts[:ssl_context_params])
+      context.verify_mode = OpenSSL::SSL::VERIFY_NONE if ssl_mode < SSL_MODE_VERIFY_CA
+      context.verify_hostname = false if ssl_mode < SSL_MODE_VERIFY_IDENTITY
+
+      ssl_socket = OpenSSL::SSL::SSLSocket.new(@socket, context)
+      ssl_socket.sync_close = true
+      ssl_socket.hostname = @opts[:host] if ssl_mode >= SSL_MODE_VERIFY_IDENTITY
+
+      @client_flags |= CLIENT_SSL
+      write Protocol::TlsAuthenticationPacket.serialize(@client_flags, 1024**3, @charset.number)
+
+      ssl_socket.connect
+      @socket = ssl_socket
+    rescue => e
+      @client_flags &= ~CLIENT_SSL
+      return if @opts[:ssl_mode] < SSL_MODE_REQUIRED
+      raise e
+    end
+
+    def ssl_cipher
+      @client_flags.allbits?(CLIENT_SSL) ? @socket.cipher : nil
     end
 
     # Quit command
