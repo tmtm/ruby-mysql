@@ -1,3 +1,32 @@
+## [3.1.0] - 2022-06-27
+
+### Incompatible changes
+
+- delete `Mysql#more_results`. use `#more_results?` instead.
+- remove `Mysql::Result#fetch_field`, `#field_tell`, `#field_seek`, `#fetch_field_direct`, `#fetch_lengths`, `#num_fields`.
+- error 'command out of sync' is `Mysql::ClientError::CommandOutOfSync` instead of `RuntimeError`.
+- error 'Authentication requires secure connection' is `Mysql::ClientError::AuthPluginErr` instead of `RuntimeError`.
+
+### Features
+
+- `Mysql#connect` option `ssl_mode`: support `SSL_MODE_VERIFY_CA`, `SSL_MODE_VERIFY_IDENTITY`.
+- `Mysql#connect` option `ssl_context_params`: see `OpenSSL::SSL::SSLContext#set_params`.
+- `Mysql#connect` option `connect_attrs`.
+- `Mysql::Stmt#more_results?`, `#next_result`, `#info`.
+- `Mysql#close` and `Mysql::Stmt#close` read pending packets.
+- `Mysql#query` and `Mysql::Stmt#execute` option: `return_result` and `yield_null_result`.
+- support session tracking. See https://dev.mysql.com/doc/refman/8.0/en/session-state-tracking.html
+- thread safe.
+- `Mysql#query` option: `bulk_retrieve`.
+
+### Fixes
+
+- When using connection that disconnected from client. error 'MySQL client is not connected' is occured instead of 'MySQL server has gone away'.
+- When SSL error, `MySQL::ClientError::ServerLost` or `ServerGoneError` is occured instead of `OpenSSL::SSL::SSLError`.
+- `Mysql#server_version` don't require connection.
+- use `connect_timeout` instead of `read/write_timeout` on initial negotiation.
+- enable to changing `local_infile` for established connection.
+
 ## [3.0.1] - 2022-06-18
 
 - LICENSE: correct author
