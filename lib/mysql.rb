@@ -818,7 +818,7 @@ class Mysql
     # @return [Mysql::Result] if return_result is true and the query returns result set.
     # @return [nil] if return_results is true and the query does not return result set.
     # @return [self] if return_result is false or block is specified.
-    def execute(*values, return_result: true, yield_null_result: true, &block)
+    def execute(*values, return_result: true, yield_null_result: true, bulk_retrieve: true, &block)
       raise ClientError, "not prepared" unless @param_count
       raise ClientError, "parameter count mismatch" if values.length != @param_count
       values = values.map{|v| @protocol.charset.convert v}
@@ -826,37 +826,35 @@ class Mysql
         @sqlstate = "00000"
         @protocol.stmt_execute_command @statement_id, values
         @fields = @result = nil
-        nfields = @protocol.get_result
         if block
           while true
-            if nfields
-              @fields = @protocol.retr_fields
-              block.call StatementResult.new(@fields, @protocol)
-            elsif yield_null_result
-              @affected_rows, @insert_id, @server_status, @warning_count, @info =
-                @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
-              block.call nil
-            end
+            get_result
+            res = store_result(bulk_retrieve: bulk_retrieve)
+            block.call res if res || yield_null_result
             break unless more_results?
-            nfields = @protocol.get_result
           end
           return self
         end
-        if nfields
-          @fields = @protocol.retr_fields
-          @result = StatementResult.new(@fields, @protocol)
-        else
-          @affected_rows, @insert_id, @server_status, @warning_count, @info =
-            @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
-        end
+        get_result
         return self unless return_result
-        return nil unless nfields
-        return @result
+        return store_result(bulk_retrieve: bulk_retrieve)
       rescue ServerError => e
         @last_error = e
         @sqlstate = e.sqlstate
         raise
       end
+    end
+
+    def get_result
+      @protocol.get_result
+      @affected_rows, @insert_id, @server_status, @warning_count, @info =
+        @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
+    end
+
+    def store_result(bulk_retrieve: true)
+      return nil if @protocol.field_count.nil? || @protocol.field_count == 0
+      @fields = @protocol.retr_fields
+      @result = StatementResult.new(@fields, @protocol, bulk_retrieve: bulk_retrieve)
     end
 
     def more_results?
@@ -870,17 +868,9 @@ class Mysql
     def next_result(return_result: true)
       return nil unless more_results?
       @fields = @result = nil
-      nfields = @protocol.get_result
-      if nfields
-        @fields = @protocol.retr_fields
-        @result = StatementResult.new(@fields, @protocol)
-      else
-        @affected_rows, @insert_id, @server_status, @warning_count, @info =
-          @protocol.affected_rows, @protocol.insert_id, @protocol.server_status, @protocol.warning_count, @protocol.message
-      end
-      return true unless return_result
-      return nil unless nfields
-      return @result
+      get_result
+      return self unless return_result
+      return store_result
     rescue ServerError => e
       @last_error = e
       @sqlstate = e.sqlstate
