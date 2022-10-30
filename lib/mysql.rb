@@ -806,6 +806,7 @@ class Mysql
     # @param [String] str query string
     # @return self
     def prepare(str)
+      raise ClientError, 'MySQL client is not connected' unless @protocol
       close
       begin
         @sqlstate = "00000"
