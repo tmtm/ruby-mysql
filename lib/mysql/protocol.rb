@@ -5,6 +5,7 @@
 require "socket"
 require "stringio"
 require "openssl"
+require "date"
 require_relative 'authenticator.rb'
 
 class Mysql
@@ -43,7 +44,7 @@ class Mysql
       when Field::TYPE_DATE
         len = pkt.utiny
         y, m, d = pkt.read(len).unpack("vCC")
-        t = Time.new(y, m, d) rescue nil
+        t = Date.new(y, m, d) rescue nil
         return t
       when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
         len = pkt.utiny
@@ -97,6 +98,12 @@ class Mysql
       when Time
         type = Field::TYPE_DATETIME
         val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, v.usec].pack("CvCCCCCV")
+      when DateTime
+        type = Field::TYPE_DATETIME
+        val = [11, v.year, v.month, v.day, v.hour, v.min, v.sec, (v.sec_fraction*1000000).to_i].pack("CvCCCCCV")
+      when Date
+        type = Field::TYPE_DATE
+        val = [11, v.year, v.month, v.day, 0, 0, 0, 0].pack("CvCCCCCV")
       else
         raise ProtocolError, "class #{v.class} is not supported"
       end
@@ -866,12 +873,15 @@ class Mysql
         else
           unsigned = f.flags & Field::UNSIGNED_FLAG != 0
           v = Protocol.net2value(@packet, f.type, unsigned)
-          if v.nil? or v.is_a? Numeric or v.is_a? Time
+          if v.nil? or v.is_a? Numeric or v.is_a? Time or v.is_a? Date
             v
-          elsif f.type == Field::TYPE_BIT or f.charsetnr == Charset::BINARY_CHARSET_NUMBER
+          elsif f.type == Field::TYPE_BIT
             Charset.to_binary(v)
+          elsif v.is_a? String
+            f.charsetnr == Charset::BINARY_CHARSET_NUMBER ?
+              Charset.to_binary(v) : Charset.convert_encoding(v, @encoding)
           else
-            Charset.convert_encoding(v, @encoding)
+            v
           end
         end
       end

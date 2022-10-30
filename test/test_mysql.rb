@@ -1210,9 +1210,9 @@ class TestMysql < Test::Unit::TestCase
       cols = @s.fetch
       assert{ cols == [nil] }
       cols = @s.fetch
-      assert{ cols == [Time.new(1000,1,1)] }
+      assert{ cols == [Date.new(1000,1,1)] }
       cols = @s.fetch
-      assert{ cols == [Time.new(9999,12,31)] }
+      assert{ cols == [Date.new(9999,12,31)] }
     end
 
     test '#fetch datetime column' do
