@@ -709,6 +709,10 @@ class TestMysql < Test::Unit::TestCase
     test '#free returns nil' do
       assert{ @res.free == nil }
     end
+
+    test '#server_status returns server status as Intger' do
+      assert{ @res.server_status.is_a? Integer }
+    end
   end
 
   sub_test_case 'Mysql::Field' do

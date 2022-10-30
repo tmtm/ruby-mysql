@@ -711,6 +711,12 @@ class Mysql
       @index = n
       ret
     end
+
+    # Server status value
+    # @return [Integer] server status value
+    def server_status
+      @protocol.server_status
+    end
   end
 
   # @!visibility public
