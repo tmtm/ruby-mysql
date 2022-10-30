@@ -901,7 +901,9 @@ class TestMysql < Test::Unit::TestCase
       @s.prepare 'insert into t values (?)'
       @s.execute 123
       @s.execute '456'
-      assert{ @m.query('select * from t').entries == [['123'], ['456']] }
+      @s.execute true
+      @s.execute false
+      assert{ @m.query('select * from t').entries == [['123'], ['456'], ['1'], ['0']] }
     end
 
     test '#execute with various arguments' do

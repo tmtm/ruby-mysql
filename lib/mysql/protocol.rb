@@ -70,6 +70,7 @@ class Mysql
     # @return [String] netdata
     # @raise [ProtocolError] value too large / value is not supported
     def self.value2net(v)
+      v = v == true ? 1 : v == false ? 0 : v
       case v
       when nil
         type = Field::TYPE_NULL
@@ -795,7 +796,7 @@ class Mysql
         netvalues = ""
         types = values.map do |v|
           t, n = Protocol.value2net v
-          netvalues.concat n if v
+          netvalues.concat n unless v.nil?
           t
         end
         [Mysql::COM_STMT_EXECUTE, statement_id, cursor_type, 1, nbm, 1, types.pack("v*"), netvalues].pack("CVCVa*Ca*a*")
@@ -806,7 +807,7 @@ class Mysql
       # If values is [1, nil, 2, 3, nil] then returns "\x12"(0b10010).
       def self.null_bitmap(values)
         bitmap = values.enum_for(:each_slice,8).map do |vals|
-          vals.reverse.inject(0){|b, v|(b << 1 | (v ? 0 : 1))}
+          vals.reverse.inject(0){|b, v|(b << 1 | (v.nil? ? 1 : 0))}
         end
         return bitmap.pack("C*")
       end
