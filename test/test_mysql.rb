@@ -1216,21 +1216,23 @@ class TestMysql < Test::Unit::TestCase
     end
 
     test '#fetch datetime column' do
-      @m.query 'create temporary table t (i datetime)'
-      @m.query "insert into t values ('0000-00-00 00:00:00'),('1000-01-01 00:00:00'),('9999-12-31 23:59:59')"
+      @m.query 'create temporary table t (i datetime(6))'
+      @m.query "insert into t values ('0000-00-00 00:00:00'),('1000-01-01 00:00:00'),('2022-10-30 12:34:56.789'),('9999-12-31 23:59:59')"
       @s.prepare 'select i from t'
       @s.execute
       assert{ @s.fetch == [nil] }
       assert{ @s.fetch == [Time.new(1000,1,1)] }
+      assert{ @s.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
       assert{ @s.fetch == [Time.new(9999,12,31,23,59,59)] }
     end
 
     test '#fetch timestamp column' do
-      @m.query 'create temporary table t (i timestamp)'
-      @m.query("insert into t values ('1970-01-02 00:00:00'),('2037-12-30 23:59:59')")
+      @m.query 'create temporary table t (i timestamp(6))'
+      @m.query("insert into t values ('1970-01-02 00:00:00'),('2022-10-30 12:34:56.789'),('2037-12-30 23:59:59')")
       @s.prepare 'select i from t'
       @s.execute
       assert{ @s.fetch == [Time.new(1970,1,2)] }
+      assert{ @s.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
       assert{ @s.fetch == [Time.new(2037,12,30,23,59,59)] }
     end
 

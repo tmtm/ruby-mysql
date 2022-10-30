@@ -48,7 +48,7 @@ class Mysql
       when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
         len = pkt.utiny
         y, m, d, h, mi, s, sp = pkt.read(len).unpack("vCCCCCV")
-        return Time.new(y, m, d, h, mi, Rational((s.to_i*1000000+sp.to_i)/1000000)) rescue nil
+        return Time.new(y, m, d, h, mi, Rational(s.to_i*1000000+sp.to_i, 1000000)) rescue nil
       when Field::TYPE_TIME
         len = pkt.utiny
         sign, d, h, mi, s, sp = pkt.read(len).unpack("CVCCCV")
