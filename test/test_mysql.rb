@@ -697,6 +697,11 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
+    test '#each always returns records from the beginning' do
+      assert{ @res.each.entries == [["1", "abc"], ["2", "defg"], ["3", "hi"], ["4", nil]] }
+      assert{ @res.each.entries == [["1", "abc"], ["2", "defg"], ["3", "hi"], ["4", nil]] }
+    end
+
     test '#row_tell returns position of current record, #row_seek set position of current record' do
       assert{ @res.fetch_row == ['1', 'abc'] }
       pos = @res.row_tell

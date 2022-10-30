@@ -333,6 +333,7 @@ class Mysql
       synchronize(before: :FIELD, after: :RESULT, error: :READY) do
         @fields = @field_count.times.map{Field.new FieldPacket.parse(read)}
         read_eof_packet
+        @no_more_records = false
         @fields
       end
     end
@@ -342,6 +343,7 @@ class Mysql
     # @return [<record_class>] record
     # @return [nil] no more record
     def retr_record(record_class)
+      return nil if @no_more_records
       synchronize(before: :RESULT) do
         enc = charset.encoding
         begin
@@ -352,6 +354,7 @@ class Mysql
           pkt.ushort
           @server_status = pkt.ushort
           set_state(more_results? ? :WAIT_RESULT : :READY)
+          @no_more_records = true
           return nil
         end
       end
@@ -371,6 +374,7 @@ class Mysql
           pkt.utiny  # 0xFE
           _warnings = pkt.ushort
           @server_status = pkt.ushort
+          @no_more_records = true
           all_recs
         ensure
           set_state(more_results? ? :WAIT_RESULT : :READY)

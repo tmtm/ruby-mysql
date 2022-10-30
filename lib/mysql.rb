@@ -614,10 +614,9 @@ class Mysql
     def initialize(fields, protocol, record_class)
       @fields = fields
       @field_index = 0             # index of field
-      @records = nil               # all records
+      @records = []                # all records
       @index = 0                   # index of record
       @fieldname_with_table = nil
-      @fetched_record = nil
       @protocol = protocol
       @record_class = record_class
     end
@@ -639,13 +638,16 @@ class Mysql
 
     # @return [Array] current record data
     def fetch
-      @fetched_record = nil
-      return @protocol.retr_record(@record_class)&.to_a unless @records
-      return nil if @index >= @records.size
-      @records[@index] = @records[@index].to_a unless @records[@index].is_a? Array
-      @fetched_record = @records[@index]
+      if @index < @records.size
+        @records[@index] = @records[@index].to_a unless @records[@index].is_a? Array
+        @index += 1
+        return @records[@index-1]
+      end
+      rec = @protocol.retr_record(@record_class)&.to_a
+      return nil unless rec
+      @records[@index] = rec
       @index += 1
-      return @fetched_record
+      return rec
     end
     alias fetch_row fetch
 
@@ -671,6 +673,7 @@ class Mysql
     # @yield [Array] record data
     # @return [self] self. If block is not specified, this returns Enumerator.
     def each(&block)
+      @index = 0
       return enum_for(:each) unless block
       while rec = fetch
         block.call rec
@@ -683,6 +686,7 @@ class Mysql
     # @yield [Hash] record data
     # @return [self] self. If block is not specified, this returns Enumerator.
     def each_hash(with_table=nil, &block)
+      @index = 0
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
         block.call rec
