@@ -5,6 +5,7 @@
 require "socket"
 require "stringio"
 require "openssl"
+require "bigdecimal"
 require "date"
 require_relative 'authenticator.rb'
 
@@ -22,8 +23,11 @@ class Mysql
     # @return [Object] converted value.
     def self.net2value(pkt, type, unsigned)
       case type
-      when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_NEWDECIMAL, Field::TYPE_BLOB, Field::TYPE_JSON
+      when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_BLOB, Field::TYPE_JSON
         return pkt.lcs
+      when Field::TYPE_NEWDECIMAL
+        s = pkt.lcs
+        return s =~ /\.[^0]+\z/ ? BigDecimal(s) : s.to_i
       when Field::TYPE_TINY
         v = pkt.utiny
         return unsigned ? v : v < 128 ? v : v-256
@@ -87,8 +91,12 @@ class Mysql
           type = Field::TYPE_LONGLONG | 0x8000
           val = [v&0xffffffff, v>>32].pack("VV")
         else
-          raise ProtocolError, "value too large: #{v}"
+          type =Field::TYPE_NEWDECIMAL
+          val = Packet.lcs(v.to_s)
         end
+      when BigDecimal
+        type = Field::TYPE_NEWDECIMAL
+        val = Packet.lcs(v.to_s)
       when Float
         type = Field::TYPE_DOUBLE
         val = [v].pack("E")

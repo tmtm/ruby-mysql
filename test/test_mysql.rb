@@ -921,9 +921,9 @@ class TestMysql < Test::Unit::TestCase
     end
 
     test '#execute with huge value' do
-      [30, 31, 32, 62, 63].each do |i|
-        assert{ @m.prepare('select cast(? as signed)').execute(2**i-1).fetch == [2**i-1] }
-        assert{ @m.prepare('select cast(? as signed)').execute(-(2**i)).fetch == [-2**i] }
+      [30, 31, 32, 62, 63, 64].each do |i|
+        assert{ @m.prepare('select ?').execute(2**i-1).fetch == [2**i-1] }
+        assert{ @m.prepare('select ?').execute(-(2**i)).fetch == [-2**i] }
       end
     end
 
@@ -1187,19 +1187,19 @@ class TestMysql < Test::Unit::TestCase
     end
 
     test '#fetch decimal column' do
-      @m.query 'create temporary table t (i decimal)'
+      @m.query 'create temporary table t (i decimal(12,2))'
       @m.query 'insert into t values (0),(9999999999),(-9999999999),(10000000000),(-10000000000)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.entries == [["0"], ["9999999999"], ["-9999999999"], ["9999999999"], ["-9999999999"]] }
+      assert{ @s.entries == [[0], [9999999999], [-9999999999], [BigDecimal('9999999999.99')], [BigDecimal('-9999999999.99')]] }
     end
 
     test '#fetch decimal unsigned column' do
-      @m.query 'create temporary table t (i decimal unsigned)'
+      @m.query 'create temporary table t (i decimal(12,2) unsigned)'
       @m.query 'insert into t values (0),(9999999998),(9999999999),(-9999999998),(-9999999999),(10000000000),(-10000000000)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.entries == [["0"], ["9999999998"], ["9999999999"], ["0"], ["0"], ["9999999999"], ["0"]] }
+      assert{ @s.entries == [[0], [9999999998], [9999999999], [0], [0], [BigDecimal('9999999999.99')], [0]] }
     end
 
     test '#fetch date column' do
