@@ -148,7 +148,7 @@ class Mysql
     # @return [Enumerator] If block is not specified
     def each(&block)
       return enum_for(:each) unless block
-      while rec = fetch
+      while (rec = fetch)
         block.call rec
       end
       self
@@ -161,7 +161,7 @@ class Mysql
     # @return [Enumerator] If block is not specified
     def each_hash(with_table=nil, &block)
       return enum_for(:each_hash, with_table) unless block
-      while rec = fetch_hash(with_table)
+      while (rec = fetch_hash(with_table))
         block.call rec
       end
       self
@@ -200,6 +200,7 @@ class Mysql
     # ignore
     # @return [void]
     def free_result
+      # dummy
     end
 
     # Returns Mysql::Result object that is empty.

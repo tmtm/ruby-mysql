@@ -2,6 +2,7 @@ require 'digest/sha1'
 
 class Mysql
   class Authenticator
+    # mysql_native_password
     class MysqlNativePassword
       # @param protocol [Mysql::Protocol]
       def initialize(protocol)

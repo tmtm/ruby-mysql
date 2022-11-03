@@ -2,6 +2,7 @@ require 'openssl'
 
 class Mysql
   class Authenticator
+    # sha256_password
     class Sha256Password
       # @param protocol [Mysql::Protocol]
       def initialize(protocol)

@@ -29,6 +29,7 @@ class Mysql
     # ignore
     # @return [void]
     def free
+      # dummy
     end
 
     # @return [Integer] number of record
@@ -76,7 +77,7 @@ class Mysql
     def each(&block)
       @index = 0
       return enum_for(:each) unless block
-      while rec = fetch
+      while (rec = fetch)
         block.call rec
       end
       self
@@ -89,7 +90,7 @@ class Mysql
     def each_hash(with_table=nil, &block)
       @index = 0
       return enum_for(:each_hash, with_table) unless block
-      while rec = fetch_hash(with_table)
+      while (rec = fetch_hash(with_table))
         block.call rec
       end
       self

@@ -24,7 +24,7 @@ class Mysql
     attr_reader :decimals
     # @return [String] defualt value
     attr_reader :default
-    alias :def :default
+    alias def default
 
     # @private
     attr_accessor :result
@@ -47,7 +47,7 @@ class Mysql
         "length"     => @length,
         "max_length" => max_length,
         "flags"      => @flags,
-        "decimals"   => @decimals
+        "decimals"   => @decimals,
       }
     end
 
@@ -75,7 +75,7 @@ class Mysql
     def max_length
       return @max_length if @max_length
       @max_length = 0
-      @result.calculate_field_max_length if @result
+      @result&.calculate_field_max_length
       @max_length
     end
 

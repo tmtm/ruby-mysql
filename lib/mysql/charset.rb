@@ -1,8 +1,8 @@
 # coding: ascii-8bit
+
 # Copyright (C) 2008-2012 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
-#
 class Mysql
   # @!attribute [r] number
   #   @private
@@ -327,14 +327,14 @@ class Mysql
       [307, "utf8mb4",  "utf8mb4_ru_0900_as_cs",       false],
       [308, "utf8mb4",  "utf8mb4_zh_0900_as_cs",       false],
       [309, "utf8mb4",  "utf8mb4_0900_bin",            false],
-    ]
+    ].freeze
 
     # @private
-    NUMBER_TO_CHARSET = {}
+    NUMBER_TO_CHARSET = {}  # rubocop:disable Style/MutableConstant
     # @private
-    COLLATION_TO_CHARSET = {}
+    COLLATION_TO_CHARSET = {}  # rubocop:disable Style/MutableConstant
     # @private
-    CHARSET_DEFAULT = {}
+    CHARSET_DEFAULT = {}  # rubocop:disable Style/MutableConstant
     CHARSETS.each do |number, csname, clname, default|
       cs = Charset.new number, csname, clname
       NUMBER_TO_CHARSET[number] = cs
@@ -407,7 +407,7 @@ class Mysql
       "utf8"     => Encoding::UTF_8,
       "utf8mb3"  => Encoding::UTF_8,
       "utf8mb4"  => Encoding::UTF_8,
-    }
+    }.freeze
 
     # @private
     # @param [String] value

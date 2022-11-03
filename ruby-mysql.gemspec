@@ -9,11 +9,12 @@ Gem::Specification.new do |s|
   s.email = 'tommy@tmtm.org'
   s.homepage = 'http://github.com/tmtm/ruby-mysql'
   s.files = ['README.md', 'CHANGELOG.md', 'lib/mysql.rb', 'lib/mysql/constants.rb', 'lib/mysql/protocol.rb', 'lib/mysql/charset.rb', 'lib/mysql/error.rb', 'lib/mysql/packet.rb', 'lib/mysql/authenticator.rb'] + Dir.glob('lib/mysql/authenticator/*.rb')
-  s.test_files = Dir.glob('test/**/*.rb')
   s.license = 'Ruby'
+  s.required_ruby_version = '>= 2.6.0'
   s.metadata['homepage_uri'] = 'http://github.com/tmtm/ruby-mysql'
   s.metadata['documentation_uri'] = 'https://www.rubydoc.info/gems/ruby-mysql'
   s.metadata['source_code_uri'] = 'http://github.com/tmtm/ruby-mysql'
+  s.metadata['rubygems_mfa_required'] = 'true'
   s.add_development_dependency 'rspec'
   s.add_development_dependency 'rspec-power_assert'
   s.add_development_dependency 'rubocop'

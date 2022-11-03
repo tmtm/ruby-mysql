@@ -1,8 +1,11 @@
 # coding: ascii-8bit
+
 # Copyright (C) 2003-2010 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
+# Mysql
 class Mysql
+  # Mysql::Error
   class Error < StandardError
     ERRNO = 0
 
@@ -11,7 +14,7 @@ class Mysql
         errname = errname.to_s
         next unless errname =~ prefix_re
         errno = self.const_get errname
-        excname = errname.sub(prefix_re,'').gsub(/(\A.|_.)([A-Z]+)/){$1+$2.downcase}.gsub(/_/,'')
+        excname = errname.sub(prefix_re, '').gsub(/(\A.|_.)([A-Z]+)/){$1+$2.downcase}.gsub(/_/, '')
         klass = Class.new self
         klass.const_set 'ERRNO', errno
         self.const_set excname, klass
@@ -32,7 +35,7 @@ class Mysql
 
   # server side error
   class ServerError < Error
-    ERROR_MAP = {}
+    ERROR_MAP = {}  # rubocop:disable Style/MutableConstant
 
     ER_ERROR_FIRST                                                      = 1000
     ER_HASHCHK                                                          = 1000
@@ -905,11 +908,11 @@ class Mysql
   end
 
   ServerError.define_error_class(/\AER_/)
-  ServerError::ERROR_MAP.values.each{|v| Mysql.const_set v.name.split(/::/).last, v} # for compatibility
+  ServerError::ERROR_MAP.each_value{|v| Mysql.const_set v.name.split(/::/).last, v} # for compatibility
 
   # client side error
   class ClientError < Error
-    ERROR_MAP = {}
+    ERROR_MAP = {}  # rubocop:disable Style/MutableConstant
 
     CR_ERROR_FIRST                           = 2000
     CR_UNKNOWN_ERROR                         = 2000
@@ -991,5 +994,4 @@ class Mysql
   # protocol error
   class ProtocolError < ClientError
   end
-
 end

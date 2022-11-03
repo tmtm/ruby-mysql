@@ -1,4 +1,5 @@
 # coding: ascii-8bit
+
 # Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
@@ -8,12 +9,11 @@ require "openssl"
 require "bigdecimal"
 require "date"
 require 'time'
-require_relative 'authenticator.rb'
+require_relative 'authenticator'
 
 class Mysql
   # MySQL network protocol
   class Protocol
-
     VERSION = 10
     MAX_PACKET_LENGTH = 2**24-1
 
@@ -43,9 +43,9 @@ class Mysql
         v = (n2 << 32) | n1
         return unsigned ? v : v < 0x8000_0000_0000_0000 ? v : v-0x10000_0000_0000_0000
       when Field::TYPE_FLOAT
-        return pkt.read(4).unpack('e').first
+        return pkt.read(4).unpack1('e')
       when Field::TYPE_DOUBLE
-        return pkt.read(8).unpack('E').first
+        return pkt.read(8).unpack1('E')
       when Field::TYPE_DATE
         len = pkt.utiny
         y, m, d = pkt.read(len).unpack("vCC")
@@ -175,7 +175,7 @@ class Mysql
           socket = @opts[:socket] || ENV["MYSQL_UNIX_PORT"] || MYSQL_UNIX_PORT
           @socket = Socket.unix(socket)
         else
-          port = @opts[:port] || ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql","tcp") rescue MYSQL_TCP_PORT)
+          port = @opts[:port] || ENV["MYSQL_TCP_PORT"] || (Socket.getservbyname("mysql", "tcp") rescue MYSQL_TCP_PORT)
           @socket = Socket.tcp(@opts[:host], port, connect_timeout: @opts[:connect_timeout])
         end
       rescue Errno::ETIMEDOUT
@@ -195,7 +195,7 @@ class Mysql
         reset
         init_packet = InitialPacket.parse read
         @server_info = init_packet.server_version
-        @server_version = init_packet.server_version.split(/\D/)[0,3].inject{|a,b|a.to_i*100+b.to_i}
+        @server_version = init_packet.server_version.split(/\D/)[0, 3].inject{|a, b| a.to_i*100+b.to_i}
         @server_capabilities = init_packet.server_capabilities
         @thread_id = init_packet.thread_id
         @client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_TRANSACTIONS | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION | CLIENT_MULTI_RESULTS | CLIENT_PS_MULTI_RESULTS | CLIENT_PLUGIN_AUTH | CLIENT_CONNECT_ATTRS | CLIENT_SESSION_TRACK | CLIENT_LOCAL_FILES
@@ -212,7 +212,7 @@ class Mysql
       end
     end
 
-    SSL_MODE_KEY               = {
+    SSL_MODE_KEY = {
       SSL_MODE_DISABLED        => 1,
       SSL_MODE_PREFERRED       => 2,
       SSL_MODE_REQUIRED        => 3,
@@ -228,7 +228,7 @@ class Mysql
       'required'               => 3,
       'verify_ca'              => 4,
       'verify_identity'        => 5,
-    }
+    }.freeze
 
     def enable_ssl
       ssl_mode = SSL_MODE_KEY[@opts[:ssl_mode]]
@@ -239,10 +239,8 @@ class Mysql
         return if @socket.local_address.unix?
         return if @server_capabilities & CLIENT_SSL == 0
       end
-      if ssl_mode >= SSL_MODE_REQUIRED
-        if @server_capabilities & CLIENT_SSL == 0
-          raise ClientError::SslConnectionError, "SSL is required but the server doesn't support it"
-        end
+      if ssl_mode >= SSL_MODE_REQUIRED && @server_capabilities & CLIENT_SSL == 0
+        raise ClientError::SslConnectionError, "SSL is required but the server doesn't support it"
       end
 
       context = OpenSSL::SSL::SSLContext.new
@@ -305,7 +303,7 @@ class Mysql
           res_packet = ResultPacket.parse read
         end
         @affected_rows, @insert_id, @server_status, @warning_count, @message, @session_track =
-                                                                              res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message, res_packet.session_track
+          res_packet.affected_rows, res_packet.insert_id, res_packet.server_status, res_packet.warning_count, res_packet.message, res_packet.session_track
         set_state :READY unless more_results?
         return nil
       end
@@ -468,16 +466,15 @@ class Mysql
 
     def set_state(st)
       @state = st
-      if st == :READY && !@gc_stmt_queue.empty?
-        gc_disabled = GC.disable
-        begin
-          while st = @gc_stmt_queue.shift
-            reset
-            write [COM_STMT_CLOSE, st].pack("CV")
-          end
-        ensure
-          GC.enable unless gc_disabled
+      return unless st == :READY && !@gc_stmt_queue.empty?
+      gc_disabled = GC.disable
+      begin
+        while (st = @gc_stmt_queue.shift)
+          reset
+          write [COM_STMT_CLOSE, st].pack("CV")
         end
+      ensure
+        GC.enable unless gc_disabled
       end
     end
 
@@ -554,10 +551,10 @@ class Mysql
         r = @socket.read_nonblock(len - result.size, exception: false)
         case r
         when :wait_readable
-          IO.select([@socket], nil, nil, e - now)
+          IO.select([@socket], nil, nil, e - now)  # rubocop:disable Lint/IncompatibleIoSelectWithFiberScheduler
           next
         when :wait_writable
-          IO.select(nil, [@socket], nil, e - now)
+          IO.select(nil, [@socket], nil, e - now)  # rubocop:disable Lint/IncompatibleIoSelectWithFiberScheduler
           next
         else
           result << r
@@ -569,27 +566,25 @@ class Mysql
     # Write one packet data
     # @param data [String, IO, nil] packet data. If data is nil, write empty packet.
     def write(data)
-      begin
-        timeout = @state == :INIT ? @opts[:connect_timeout] : @opts[:write_timeout]
-        @socket.sync = false
-        if data.nil?
-          write_timeout([0, 0, @seq].pack("CvC"), timeout)
+      timeout = @state == :INIT ? @opts[:connect_timeout] : @opts[:write_timeout]
+      @socket.sync = false
+      if data.nil?
+        write_timeout([0, 0, @seq].pack("CvC"), timeout)
+        @seq = (@seq + 1) % 256
+      else
+        data = StringIO.new data if data.is_a? String
+        while (d = data.read(MAX_PACKET_LENGTH))
+          write_timeout([d.length%256, d.length/256, @seq].pack("CvC")+d, timeout)
           @seq = (@seq + 1) % 256
-        else
-          data = StringIO.new data if data.is_a? String
-          while d = data.read(MAX_PACKET_LENGTH)
-            write_timeout([d.length%256, d.length/256, @seq].pack("CvC")+d, timeout)
-            @seq = (@seq + 1) % 256
-          end
         end
-        @socket.sync = true
-        @socket.flush
-      rescue Errno::EPIPE, OpenSSL::SSL::SSLError
-        close
-        raise ClientError::ServerGoneError, 'MySQL server has gone away'
-      rescue Errno::ETIMEDOUT
-        raise ClientError, "write timeout"
       end
+      @socket.sync = true
+      @socket.flush
+    rescue Errno::EPIPE, OpenSSL::SSL::SSLError
+      close
+      raise ClientError::ServerGoneError, 'MySQL server has gone away'
+    rescue Errno::ETIMEDOUT
+      raise ClientError, "write timeout"
     end
 
     def write_timeout(data, timeout)
@@ -599,12 +594,12 @@ class Mysql
       while len < data.size
         now = Time.now
         raise Errno::ETIMEDOUT if now > e
-        l = @socket.write_nonblock(data[len..-1], exception: false)
+        l = @socket.write_nonblock(data[len..], exception: false)
         case l
         when :wait_readable
-          IO.select([@socket], nil, nil, e - now)
+          IO.select([@socket], nil, nil, e - now)  # rubocop:disable Lint/IncompatibleIoSelectWithFiberScheduler
         when :wait_writable
-          IO.select(nil, [@socket], nil, e - now)
+          IO.select(nil, [@socket], nil, e - now)  # rubocop:disable Lint/IncompatibleIoSelectWithFiberScheduler
         else
           len += l
         end
@@ -710,8 +705,6 @@ class Mysql
           when SESSION_TRACK_TRANSACTION_CHARACTERISTICS, SESSION_TRACK_TRANSACTION_STATE
             pkt.lcb  # skip
             session_track[type].push pkt.lcs
-          else
-            # unkonwn type
           end
         end
         session_track
@@ -826,14 +819,14 @@ class Mysql
       #
       # If values is [1, nil, 2, 3, nil] then returns "\x12"(0b10010).
       def self.null_bitmap(values)
-        bitmap = values.enum_for(:each_slice,8).map do |vals|
-          vals.reverse.inject(0){|b, v|(b << 1 | (v.nil? ? 1 : 0))}
+        bitmap = values.enum_for(:each_slice, 8).map do |vals|
+          vals.reverse.inject(0){|b, v| (b << 1 | (v.nil? ? 1 : 0))}
         end
         return bitmap.pack("C*")
       end
-
     end
 
+    # Authentication result packet
     class AuthenticationResultPacket
       def self.parse(pkt)
         result = pkt.utiny
@@ -850,52 +843,55 @@ class Mysql
     end
   end
 
+  # raw record
   class RawRecord
     def initialize(packet, fields, encoding)
       @packet, @fields, @encoding = packet, fields, encoding
     end
 
     def to_a
-      @fields.map do |f|
-        if s = @packet.lcs
-          case f.type
-          when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_BLOB, Field::TYPE_JSON
-            if f.charsetnr == Charset::BINARY_CHARSET_NUMBER
-              s.b
-            else
-              Charset.convert_encoding(s, @encoding)
-            end
-          when Field::TYPE_NEWDECIMAL
-            s =~ /\.[^0]+\z/ ? BigDecimal(s) : s.to_i
-          when Field::TYPE_TINY, Field::TYPE_SHORT, Field::TYPE_INT24, Field::TYPE_LONG, Field::TYPE_LONGLONG
-            s.to_i
-          when Field::TYPE_FLOAT, Field::TYPE_DOUBLE
-            s.to_f
-          when Field::TYPE_DATE
-            Date.parse(s) rescue nil
-          when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
-            Time.parse(s) rescue nil
-          when Field::TYPE_TIME
-            h, m, sec = s.split(/:/)
-            if s =~ /\A-/
-              h.to_i*3600 - m.to_i*60 - sec.to_f
-            else
-              h.to_i*3600 + m.to_i*60 + sec.to_f
-            end
-          when Field::TYPE_YEAR
-            s.to_i
-          when Field::TYPE_BIT
-            s.b
-          else
-            s.b
-          end
+      @fields.map{|f| convert_type(f, @packet.lcs) }
+    end
+
+    private
+
+    def convert_type(f, s)
+      return nil if s.nil?
+      case f.type
+      when Field::TYPE_STRING, Field::TYPE_VAR_STRING, Field::TYPE_BLOB, Field::TYPE_JSON
+        if f.charsetnr == Charset::BINARY_CHARSET_NUMBER
+          s.b
         else
-          nil
+          Charset.convert_encoding(s, @encoding)
         end
+      when Field::TYPE_NEWDECIMAL
+        s =~ /\.[^0]+\z/ ? BigDecimal(s) : s.to_i
+      when Field::TYPE_TINY, Field::TYPE_SHORT, Field::TYPE_INT24, Field::TYPE_LONG, Field::TYPE_LONGLONG
+        s.to_i
+      when Field::TYPE_FLOAT, Field::TYPE_DOUBLE
+        s.to_f
+      when Field::TYPE_DATE
+        Date.parse(s) rescue nil
+      when Field::TYPE_DATETIME, Field::TYPE_TIMESTAMP
+        Time.parse(s) rescue nil
+      when Field::TYPE_TIME
+        h, m, sec = s.split(/:/)
+        if s =~ /\A-/
+          h.to_i*3600 - m.to_i*60 - sec.to_f
+        else
+          h.to_i*3600 + m.to_i*60 + sec.to_f
+        end
+      when Field::TYPE_YEAR
+        s.to_i
+      when Field::TYPE_BIT
+        s.b
+      else
+        s.b
       end
     end
   end
 
+  # prepared statement raw record
   class StmtRawRecord
     # @param pkt [Packet]
     # @param fields [Array of Fields]
@@ -908,9 +904,9 @@ class Mysql
     # @return [Array<Object>] one record
     def parse_record_packet
       @packet.utiny  # skip first byte
-      null_bit_map = @packet.read((@fields.length+7+2)/8).unpack("b*").first
+      null_bit_map = @packet.read((@fields.length+7+2)/8).unpack1("b*")
       rec = @fields.each_with_index.map do |f, i|
-        if null_bit_map[i+2] == ?1
+        if null_bit_map[i+2] == '1'
           nil
         else
           unsigned = f.flags & Field::UNSIGNED_FLAG != 0
@@ -920,8 +916,7 @@ class Mysql
           elsif f.type == Field::TYPE_BIT
             Charset.to_binary(v)
           elsif v.is_a? String
-            f.charsetnr == Charset::BINARY_CHARSET_NUMBER ?
-              Charset.to_binary(v) : Charset.convert_encoding(v, @encoding)
+            f.charsetnr == Charset::BINARY_CHARSET_NUMBER ? Charset.to_binary(v) : Charset.convert_encoding(v, @encoding)
           else
             v
           end
@@ -931,6 +926,5 @@ class Mysql
     end
 
     alias to_a parse_record_packet
-
   end
 end

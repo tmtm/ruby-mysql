@@ -10,7 +10,7 @@ describe Mysql do
   end
 
   describe 'arguments' do
-    after{ @m.close if @m }
+    after{ @m&.close }
 
     it 'with fixed arguments' do
       @m = Mysql.new('127.0.0.1', 'hoge', 'abc&def', 'test', 3306, '/tmp/socket', 12345)
@@ -70,7 +70,7 @@ describe Mysql do
   end
 
   describe 'Mysql.connect' do
-    after{ @m.close if @m }
+    after{ @m&.close }
 
     it 'connect to mysqld' do
       @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
@@ -99,7 +99,7 @@ describe Mysql do
   end
 
   describe 'Mysql#connect' do
-    after{ @m.close if @m }
+    after{ @m&.close }
 
     it 'connect to mysqld' do
       @m = Mysql.new(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
@@ -134,7 +134,8 @@ describe Mysql do
       allow(Socket).to receive(:tcp) { raise Errno::ETIMEDOUT }
       allow(Socket).to receive(:unix) { raise Errno::ETIMEDOUT }
       expect {
-        @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET) }.to raise_error Mysql::ClientError, 'connection timeout'
+        @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      }.to raise_error Mysql::ClientError, 'connection timeout'
       expect {
         @m.connect
       }.to raise_error Mysql::ClientError, 'connection timeout'
@@ -223,7 +224,7 @@ describe Mysql do
     end
 
     after do
-      @m.close if @m rescue nil
+      @m&.close
     end
 
     describe '#escape_string' do
@@ -495,10 +496,12 @@ describe Mysql do
         @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
         cnt = 0
         expect = [[1], [2]]
-        assert{ @m.query('select 1; select 2'){|res|
+        assert{
+          @m.query('select 1; select 2'){|res|
             assert{ res.fetch_row == expect.shift }
             cnt += 1
-          } == @m }
+          } == @m
+        }
         assert{ cnt == 2 }
       end
       it 'evaluate block only when query has result' do
@@ -576,7 +579,7 @@ describe Mysql do
     end
 
     after do
-      @m.close if @m
+      @m&.close
     end
 
     it '#data_seek set position of current record' do
@@ -661,7 +664,7 @@ describe Mysql do
     end
 
     it '#each_hash(true): hash key has table name' do
-      expect = [{"t.id"=>1, "t.str"=>"abc"}, {"t.id"=>2, "t.str"=>"defg"}, {"t.id"=>3,"t.str"=>"hi"}, {"t.id"=>4, "t.str"=>nil}]
+      expect = [{"t.id"=>1, "t.str"=>"abc"}, {"t.id"=>2, "t.str"=>"defg"}, {"t.id"=>3, "t.str"=>"hi"}, {"t.id"=>4, "t.str"=>nil}]
       @res.each_hash(true) do |a|
         assert{ a == expect.shift }
       end
@@ -697,7 +700,7 @@ describe Mysql do
     end
 
     after do
-      @m.close if @m
+      @m&.close
     end
 
     it '#fetch returns result-record' do
@@ -709,7 +712,8 @@ describe Mysql do
       @m.query 'create temporary table t (i bit(8))'
       @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
       res = @m.query 'select i from t'
-      assert{ res.entries == [
+      assert{
+        res.entries == [
           ["\x00".force_encoding('ASCII-8BIT')],
           ["\xff".force_encoding('ASCII-8BIT')],
           ["\x7f".force_encoding('ASCII-8BIT')],
@@ -725,7 +729,8 @@ describe Mysql do
       @m.query 'create temporary table t (i bit(64))'
       @m.query 'insert into t values (0),(-1),(4294967296),(18446744073709551615),(18446744073709551616)'
       res = @m.query 'select i from t'
-      assert{ res.entries == [
+      assert{
+        res.entries == [
           ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
           ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
           ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
@@ -809,7 +814,7 @@ describe Mysql do
       @m.query 'create temporary table t (i float)'
       @m.query 'insert into t values (0),(-3.402823466E+38),(-1.175494351E-38),(1.175494351E-38),(3.402823466E+38)'
       res = @m.query 'select i from t'
-      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0 }
       assert{ (res.fetch[0] - -3.40282E+38).abs < 0.000000001E+38 }
       assert{ (res.fetch[0] - -1.17549E-38).abs < 0.000000001E-38 }
       assert{ (res.fetch[0] -  1.17549E-38).abs < 0.000000001E-38 }
@@ -820,9 +825,9 @@ describe Mysql do
       @m.query 'create temporary table t (i float unsigned)'
       @m.query 'insert into t values (0),(-3.402823466E+38),(-1.175494351E-38),(1.175494351E-38),(3.402823466E+38)'
       res = @m.query 'select i from t'
-      assert{ res.fetch[0] == 0.0 }
-      assert{ res.fetch[0] == 0.0 }
-      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0 }
+      assert{ res.fetch[0] == 0 }
+      assert{ res.fetch[0] == 0 }
       assert{ (res.fetch[0] -  1.17549E-38).abs < 0.000000001E-38 }
       assert{ (res.fetch[0] -  3.40282E+38).abs < 0.000000001E+38 }
     end
@@ -831,7 +836,7 @@ describe Mysql do
       @m.query 'create temporary table t (i double)'
       @m.query 'insert into t values (0),(-1.7976931348623157E+308),(-2.2250738585072014E-308),(2.2250738585072014E-308),(1.7976931348623157E+308)'
       res = @m.query 'select i from t'
-      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0 }
       assert{ (res.fetch[0] - -Float::MAX).abs < Float::EPSILON }
       assert{ (res.fetch[0] - -Float::MIN).abs < Float::EPSILON }
       assert{ (res.fetch[0] -  Float::MIN).abs < Float::EPSILON }
@@ -842,9 +847,9 @@ describe Mysql do
       @m.query 'create temporary table t (i double unsigned)'
       @m.query 'insert into t values (0),(-1.7976931348623157E+308),(-2.2250738585072014E-308),(2.2250738585072014E-308),(1.7976931348623157E+308)'
       res = @m.query 'select i from t'
-      assert{ res.fetch[0] == 0.0 }
-      assert{ res.fetch[0] == 0.0 }
-      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0 }
+      assert{ res.fetch[0] == 0 }
+      assert{ res.fetch[0] == 0 }
       assert{ (res.fetch[0] - Float::MIN).abs < Float::EPSILON }
       assert{ (res.fetch[0] - Float::MAX).abs < Float::EPSILON }
     end
@@ -870,9 +875,9 @@ describe Mysql do
       cols = res.fetch
       assert{ cols == [nil] }
       cols = res.fetch
-      assert{ cols == [Date.new(1000,1,1)] }
+      assert{ cols == [Date.new(1000, 1, 1)] }
       cols = res.fetch
-      assert{ cols == [Date.new(9999,12,31)] }
+      assert{ cols == [Date.new(9999, 12, 31)] }
     end
 
     it '#fetch datetime column' do
@@ -880,18 +885,18 @@ describe Mysql do
       @m.query "insert into t values ('0000-00-00 00:00:00'),('1000-01-01 00:00:00'),('2022-10-30 12:34:56.789'),('9999-12-31 23:59:59')"
       res = @m.query 'select i from t'
       assert{ res.fetch == [nil] }
-      assert{ res.fetch == [Time.new(1000,1,1)] }
-      assert{ res.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
-      assert{ res.fetch == [Time.new(9999,12,31,23,59,59)] }
+      assert{ res.fetch == [Time.new(1000, 1, 1)] }
+      assert{ res.fetch == [Time.new(2022, 10, 30, 12, 34, 56789/1000r)] }
+      assert{ res.fetch == [Time.new(9999, 12, 31, 23, 59, 59)] }
     end
 
     it '#fetch timestamp column' do
       @m.query 'create temporary table t (i timestamp(6))'
       @m.query("insert into t values ('1970-01-02 00:00:00'),('2022-10-30 12:34:56.789'),('2037-12-30 23:59:59')")
       res = @m.query 'select i from t'
-      assert{ res.fetch == [Time.new(1970,1,2)] }
-      assert{ res.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
-      assert{ res.fetch == [Time.new(2037,12,30,23,59,59)] }
+      assert{ res.fetch == [Time.new(1970, 1, 2)] }
+      assert{ res.fetch == [Time.new(2022, 10, 30, 12, 34, 56789/1000r)] }
+      assert{ res.fetch == [Time.new(2037, 12, 30, 23, 59, 59)] }
     end
 
     it '#fetch time column' do
@@ -1028,7 +1033,7 @@ describe Mysql do
     end
 
     after do
-      @m.close if @m
+      @m&.close
     end
 
     it '#name is name of field' do
@@ -1068,7 +1073,8 @@ describe Mysql do
     end
 
     it '#to_hash return field as hash' do
-      assert{ @res.fields[0].to_hash == {
+      assert{
+        @res.fields[0].to_hash == {
           'name'       => 'id',
           'table'      => 't',
           'def'        => nil,
@@ -1079,7 +1085,8 @@ describe Mysql do
           'decimals'   => 0,
         }
       }
-      assert{ @res.fields[1].to_hash == {
+      assert{
+        @res.fields[1].to_hash == {
           'name'       => 'str',
           'table'      => 't',
           'def'        => nil,
@@ -1119,7 +1126,7 @@ describe Mysql do
     end
 
     after do
-      @m.close if @m
+      @m&.close
     end
 
     it 'Mysql#stmt returns Mysql::Stmt object' do
@@ -1139,8 +1146,8 @@ describe Mysql do
     end
 
     after do
-      @s.close if @s rescue nil
-      @m.close if @m rescue nil
+      @s&.close
+      @m&.close
     end
 
     it '#affected_rows returns number of affected records' do
@@ -1179,8 +1186,8 @@ describe Mysql do
       @s.prepare 'select * from t'
       res = @s.execute
       expect = [
-        [1, 'abc', Time.new(1970,12,24,23,59,05)],
-        [2, 'def', Time.new(2112,9,3,12,34,56)],
+        [1, 'abc', Time.new(1970, 12, 24, 23, 59, 5)],
+        [2, 'def', Time.new(2112, 9, 3, 12, 34, 56)],
         [3, '123', nil],
       ]
       res.each do |a|
@@ -1216,8 +1223,8 @@ describe Mysql do
     it '#execute with various arguments' do
       @m.query 'create temporary table t (i int, c char(255), t timestamp)'
       @s.prepare 'insert into t values (?,?,?)'
-      @s.execute 123, 'hoge', Time.local(2009,12,8,19,56,21)
-      assert{ @m.query('select * from t').fetch_row == [123, 'hoge', Time.local(2009,12,8,19,56,21)] }
+      @s.execute 123, 'hoge', Time.local(2009, 12, 8, 19, 56, 21)
+      assert{ @m.query('select * from t').fetch_row == [123, 'hoge', Time.local(2009, 12, 8, 19, 56, 21)] }
     end
 
     it '#execute with arguments that is invalid count raise error' do
@@ -1336,7 +1343,8 @@ describe Mysql do
       @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.entries == [
+      assert{
+        @s.entries == [
           ["\x00".force_encoding('ASCII-8BIT')],
           ["\xff".force_encoding('ASCII-8BIT')],
           ["\x7f".force_encoding('ASCII-8BIT')],
@@ -1353,7 +1361,8 @@ describe Mysql do
       @m.query 'insert into t values (0),(-1),(4294967296),(18446744073709551615),(18446744073709551616)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.entries == [
+      assert{
+        @s.entries == [
           ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
           ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
           ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
@@ -1448,7 +1457,7 @@ describe Mysql do
       @m.query 'insert into t values (0),(-3.402823466E+38),(-1.175494351E-38),(1.175494351E-38),(3.402823466E+38)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch[0] == 0.0 }
+      assert{ @s.fetch[0] == 0 }
       assert{ (@s.fetch[0] - -3.402823466E+38).abs < 0.000000001E+38 }
       assert{ (@s.fetch[0] - -1.175494351E-38).abs < 0.000000001E-38 }
       assert{ (@s.fetch[0] -  1.175494351E-38).abs < 0.000000001E-38 }
@@ -1460,9 +1469,9 @@ describe Mysql do
       @m.query 'insert into t values (0),(-3.402823466E+38),(-1.175494351E-38),(1.175494351E-38),(3.402823466E+38)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch[0] == 0.0 }
-      assert{ @s.fetch[0] == 0.0 }
-      assert{ @s.fetch[0] == 0.0 }
+      assert{ @s.fetch[0] == 0 }
+      assert{ @s.fetch[0] == 0 }
+      assert{ @s.fetch[0] == 0 }
       assert{ (@s.fetch[0] -  1.175494351E-38).abs < 0.000000001E-38 }
       assert{ (@s.fetch[0] -  3.402823466E+38).abs < 0.000000001E+38 }
     end
@@ -1472,7 +1481,7 @@ describe Mysql do
       @m.query 'insert into t values (0),(-1.7976931348623157E+308),(-2.2250738585072014E-308),(2.2250738585072014E-308),(1.7976931348623157E+308)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch[0] == 0.0 }
+      assert{ @s.fetch[0] == 0 }
       assert{ (@s.fetch[0] - -Float::MAX).abs < Float::EPSILON }
       assert{ (@s.fetch[0] - -Float::MIN).abs < Float::EPSILON }
       assert{ (@s.fetch[0] -  Float::MIN).abs < Float::EPSILON }
@@ -1484,9 +1493,9 @@ describe Mysql do
       @m.query 'insert into t values (0),(-1.7976931348623157E+308),(-2.2250738585072014E-308),(2.2250738585072014E-308),(1.7976931348623157E+308)'
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch[0] == 0.0 }
-      assert{ @s.fetch[0] == 0.0 }
-      assert{ @s.fetch[0] == 0.0 }
+      assert{ @s.fetch[0] == 0 }
+      assert{ @s.fetch[0] == 0 }
+      assert{ @s.fetch[0] == 0 }
       assert{ (@s.fetch[0] - Float::MIN).abs < Float::EPSILON }
       assert{ (@s.fetch[0] - Float::MAX).abs < Float::EPSILON }
     end
@@ -1515,9 +1524,9 @@ describe Mysql do
       cols = @s.fetch
       assert{ cols == [nil] }
       cols = @s.fetch
-      assert{ cols == [Date.new(1000,1,1)] }
+      assert{ cols == [Date.new(1000, 1, 1)] }
       cols = @s.fetch
-      assert{ cols == [Date.new(9999,12,31)] }
+      assert{ cols == [Date.new(9999, 12, 31)] }
     end
 
     it '#fetch datetime column' do
@@ -1526,9 +1535,9 @@ describe Mysql do
       @s.prepare 'select i from t'
       @s.execute
       assert{ @s.fetch == [nil] }
-      assert{ @s.fetch == [Time.new(1000,1,1)] }
-      assert{ @s.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
-      assert{ @s.fetch == [Time.new(9999,12,31,23,59,59)] }
+      assert{ @s.fetch == [Time.new(1000, 1, 1)] }
+      assert{ @s.fetch == [Time.new(2022, 10, 30, 12, 34, 56789/1000r)] }
+      assert{ @s.fetch == [Time.new(9999, 12, 31, 23, 59, 59)] }
     end
 
     it '#fetch timestamp column' do
@@ -1536,9 +1545,9 @@ describe Mysql do
       @m.query("insert into t values ('1970-01-02 00:00:00'),('2022-10-30 12:34:56.789'),('2037-12-30 23:59:59')")
       @s.prepare 'select i from t'
       @s.execute
-      assert{ @s.fetch == [Time.new(1970,1,2)] }
-      assert{ @s.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
-      assert{ @s.fetch == [Time.new(2037,12,30,23,59,59)] }
+      assert{ @s.fetch == [Time.new(1970, 1, 2)] }
+      assert{ @s.fetch == [Time.new(2022, 10, 30, 12, 34, 56789/1000r)] }
+      assert{ @s.fetch == [Time.new(2037, 12, 30, 23, 59, 59)] }
     end
 
     it '#fetch time column' do
@@ -1830,8 +1839,10 @@ describe Mysql do
       m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
       begin
         m.query('hogehoge')
-      rescue => @e
+      rescue => e
+        @e = e
       end
+      m.close
     end
 
     it '#error is error message' do
@@ -1860,7 +1871,7 @@ describe Mysql do
     end
 
     after do
-      v =  $VERBOSE
+      v = $VERBOSE
       $VERBOSE = false
       Encoding.default_internal = @default_internal
       $VERBOSE = v
@@ -1869,7 +1880,7 @@ describe Mysql do
     describe 'default_internal is CP932' do
       before do
         @m.prepare("insert into t (utf8,cp932,eucjp,bin) values (?,?,?,?)").execute @utf8, @cp932, @eucjp, @bin
-        v =  $VERBOSE
+        v = $VERBOSE
         $VERBOSE = false
         Encoding.default_internal = 'CP932'
         $VERBOSE = v

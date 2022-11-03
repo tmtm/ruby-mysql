@@ -1,4 +1,5 @@
 class Mysql
+  # authenticator
   class Authenticator
     @plugins = {}
 
@@ -55,11 +56,12 @@ class Mysql
             end
           end
         else
-          raise ClientError, "invalid packet: #{pkt.to_s}"
+          raise ClientError, "invalid packet: #{pkt}"
         end
       end
     end
 
+    # dummy plugin
     class DummyPlugin
       # @param protocol [Mysql::Protocol]
       def initialize(protocol)
@@ -75,7 +77,7 @@ class Mysql
       # @param scramble [String]
       # @yield [String] hashed password
       # @return [Mysql::Packet]
-      def authenticate(passwd, scramble)
+      def authenticate(passwd, scramble)  # rubocop:disable Lint/UnusedMethodArgument
         yield ''
         @protocol.read
       end

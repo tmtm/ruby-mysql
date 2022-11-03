@@ -1,4 +1,5 @@
 # coding: ascii-8bit
+
 # Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
@@ -19,10 +20,10 @@ class Mysql
   require_relative "mysql/error"
   require_relative "mysql/charset"
   require_relative "mysql/protocol"
-  require_relative "mysql/packet.rb"
+  require_relative "mysql/packet"
 
-  VERSION            = '4.0.0'             # Version number of this library
-  MYSQL_UNIX_PORT    = "/tmp/mysql.sock"   # UNIX domain socket filename
+  VERSION            = -'4.0.0'             # Version number of this library
+  MYSQL_UNIX_PORT    = -"/tmp/mysql.sock"   # UNIX domain socket filename
   MYSQL_TCP_PORT     = 3306                # TCP socket port number
 
   # @!attribute [rw] host
@@ -101,7 +102,7 @@ class Mysql
     # @param [String] str
     # @return [String]
     def escape_string(str)
-      str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
+      str.gsub(/[\0\n\r\\'"\x1a]/) do |s|
         case s
         when "\0" then "\\0"
         when "\n" then "\\n"
@@ -268,7 +269,6 @@ class Mysql
       query "SET NAMES #{charset.name}"
     end
     @opts[:charset] = charset
-    cs
   end
 
   # @return [String] charset name
@@ -283,7 +283,7 @@ class Mysql
 
   # @return [String] last error message
   def error
-    @last_error && @last_error.error
+    @last_error&.error
   end
 
   # @return [String] sqlstate for last error
@@ -314,7 +314,7 @@ class Mysql
 
   # @return [String] information for last query
   def info
-    @protocol && @protocol.message
+    @protocol&.message
   end
 
   # @return [Integer] number of affected records by insert/update/delete.

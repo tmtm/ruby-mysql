@@ -1,5 +1,7 @@
 # coding: ascii-8bit
+
 class Mysql
+  # Mysql::Packet
   class Packet
     # convert Numeric to LengthCodedBinary
     def self.lcb(num)
@@ -49,21 +51,21 @@ class Mysql
     end
 
     def string
-      str = @data.unpack('Z*').first
+      str = @data.unpack1('Z*')
       @data.slice!(0, str.length+1)
       str
     end
 
     def utiny
-      @data.slice!(0, 1).unpack('C').first
+      @data.slice!(0, 1).unpack1('C')
     end
 
     def ushort
-      @data.slice!(0, 2).unpack('v').first
+      @data.slice!(0, 2).unpack1('v')
     end
 
     def ulong
-      @data.slice!(0, 4).unpack('V').first
+      @data.slice!(0, 4).unpack1('V')
     end
 
     def eof?
@@ -73,6 +75,5 @@ class Mysql
     def to_s
       @data
     end
-
   end
 end

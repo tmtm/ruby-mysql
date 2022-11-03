@@ -2,6 +2,7 @@ require 'digest/sha2'
 
 class Mysql
   class Authenticator
+    # caching_sha2_password
     class CachingSha2Password
       # @param protocol [Mysql::Protocol]
       def initialize(protocol)

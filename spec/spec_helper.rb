@@ -1,8 +1,8 @@
 require 'rspec'
 
 # for power_assert
-Fixnum = Integer unless defined? Fixnum
-Bignum = Integer unless defined? Bignum
+Fixnum = Integer unless defined? Fixnum  # rubocop:disable Lint/UnifiedInteger
+Bignum = Integer unless defined? Bignum  # rubocop:disable Lint/UnifiedInteger
 require 'rspec-power_assert'
 RSpec::PowerAssert.example_assertion_alias :assert
 

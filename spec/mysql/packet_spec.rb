@@ -1,9 +1,10 @@
 # coding: binary
+
 require 'spec_helper'
 
 describe Mysql::Packet do
   def self._(s)
-    s.unpack('H*').first
+    s.unpack1('H*')
   end
 
   subject{ Mysql::Packet.new(data) }
