@@ -178,23 +178,23 @@ class Mysql
   end
 
   def parse_args(args, opts)
-    case args[0]
-    when URI
-      uri = args[0]
-    when /\Amysql:\/\//
-      uri = URI.parse(args[0])
-    when String
-      @opts[:host], user, passwd, dbname, port, socket, flags = *args
-      @opts[:username] = user if user
-      @opts[:password] = passwd if passwd
-      @opts[:database] = dbname if dbname
-      @opts[:port] = port if port
-      @opts[:socket] = socket if socket
-      @opts[:flags] = flags if flags
-    when Hash
-      # skip
-    when nil
-      # skip
+    unless args.empty?
+      case args[0]
+      when URI
+        uri = args[0]
+      when /\Amysql:\/\//
+        uri = URI.parse(args[0])
+      when String, nil
+        @opts[:host], user, passwd, dbname, port, socket, flags = *args
+        @opts[:username] = user if user
+        @opts[:password] = passwd if passwd
+        @opts[:database] = dbname if dbname
+        @opts[:port] = port if port
+        @opts[:socket] = socket if socket
+        @opts[:flags] = flags if flags
+      when Hash
+        # skip
+      end
     end
     if uri
       host = uri.hostname.to_s
