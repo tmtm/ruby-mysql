@@ -1,0 +1,7 @@
+# MYSQL_USER must have ALL privilege for MYSQL_DATABASE.* and RELOAD privilege for *.*
+MYSQL_SERVER   = ENV['MYSQL_SERVER']   || 'localhost'
+MYSQL_USER     = ENV['MYSQL_USER']     || 'root'
+MYSQL_PASSWORD = ENV['MYSQL_PASSWORD'] || 'secret'
+MYSQL_DATABASE = ENV['MYSQL_DATABASE'] || "test_for_mysql_ruby"
+MYSQL_PORT     = ENV['MYSQL_PORT']     || 3306
+MYSQL_SOCKET   = ENV['MYSQL_SOCKET']   || '/tmp/mysql.sock'
