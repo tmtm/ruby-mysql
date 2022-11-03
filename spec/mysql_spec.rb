@@ -127,7 +127,7 @@ describe Mysql do
     it 'init_command: execute query when connecting' do
       @m.init_command = "SET AUTOCOMMIT=0"
       assert{ @m.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET) == @m }
-      assert{ @m.query('select @@AUTOCOMMIT').fetch_row == ["0"] }
+      assert{ @m.query('select @@AUTOCOMMIT').fetch_row == [0] }
     end
     it 'connect_timeout: set timeout for connecting' do
       @m.connect_timeout = 0.1
@@ -152,7 +152,7 @@ describe Mysql do
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
       assert{ @m.info == 'Records: 1  Deleted: 0  Skipped: 0  Warnings: 0' }
-      assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
+      assert{ @m.query('select * from t').fetch_row == [123, 'abc'] }
     end
     it 'load_data_local_dir: client can execute LOAD DATA LOCAL INFILE query with specified directory' do
       require 'tempfile'
@@ -166,7 +166,7 @@ describe Mysql do
       end
       @m.query('create temporary table t (i int, c char(10))')
       @m.query("load data local infile '#{tmpf.path}' into table t")
-      assert{ @m.query('select * from t').fetch_row == ['123','abc'] }
+      assert{ @m.query('select * from t').fetch_row == [123, 'abc'] }
     end
     it 'load_data_local_dir: client cannot execute LOAD DATA LOCAL INFILE query without specified directory' do
       require 'tempfile'
@@ -366,20 +366,20 @@ describe Mysql do
       end
       it 'returns self if return_result is false' do
         assert{ @m.query('select 123', return_result: false) == @m }
-        assert{ @m.store_result.entries == [['123']] }
+        assert{ @m.store_result.entries == [[123]] }
       end
       it 'if return_result is false and query returns no result' do
         assert{ @m.query('set @hoge=123', return_result: false) == @m }
         assert{ @m.store_result == nil }
       end
       it 'if yield_null_result is true' do
-        expects = [[['1']], nil, [['2']]]
+        expects = [[[1]], nil, [[2]]]
         results = []
         @m.query('select 1; set @hoge=123; select 2', yield_null_result: true){|r| results.push r&.entries }
         assert{ results == expects }
       end
       it 'if yield_null_result is false' do
-        expects = [[['1']], [['2']]]
+        expects = [[[1]], [[2]]]
         results = []
         @m.query('select 1; set @hoge=123; select 2', yield_null_result: false){|r| results.push r&.entries }
         assert{ results == expects }
@@ -460,9 +460,9 @@ describe Mysql do
 
       it 'change auto-commit mode' do
         @m.autocommit(true)
-        assert{ @m.query('select @@autocommit').fetch_row == ['1'] }
+        assert{ @m.query('select @@autocommit').fetch_row == [1] }
         @m.autocommit(false)
-        assert{ @m.query('select @@autocommit').fetch_row == ['0'] }
+        assert{ @m.query('select @@autocommit').fetch_row == [0] }
       end
     end
 
@@ -494,7 +494,7 @@ describe Mysql do
       it 'evaluate block multiple times if multiple query is specified' do
         @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
         cnt = 0
-        expect = [["1"], ["2"]]
+        expect = [[1], [2]]
         assert{ @m.query('select 1; select 2'){|res|
             assert{ res.fetch_row == expect.shift }
             cnt += 1
@@ -504,7 +504,7 @@ describe Mysql do
       it 'evaluate block only when query has result' do
         @m.set_server_option Mysql::OPTION_MULTI_STATEMENTS_ON
         cnt = 0
-        expect = [[["1"]], nil, [["2"]]]
+        expect = [[[1]], nil, [[2]]]
         assert do
           @m.query('select 1; set @hoge:=1; select 2'){|res|
             assert{ res&.entries == expect.shift }
@@ -520,9 +520,9 @@ describe Mysql do
     m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
     res = m.query 'select 1,2; select 3,4,5'
-    assert{ res.entries == [['1','2']] }
+    assert{ res.entries == [[1, 2]] }
     assert{ m.more_results? == true }
-    assert{ m.next_result.entries == [['3','4','5']] }
+    assert{ m.next_result.entries == [[3, 4, 5]] }
     assert{ m.more_results? == false }
     assert{ m.next_result == nil }
     m.close!
@@ -532,7 +532,7 @@ describe Mysql do
     m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
     m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
     res = m.query 'select 1; select hoge; select 2'
-    assert{ res.entries == [['1']] }
+    assert{ res.entries == [[1]] }
     assert{ m.more_results? == true }
     expect { m.next_result }.to raise_error Mysql::ServerError::BadFieldError
     assert{ m.more_results? == false }
@@ -544,9 +544,9 @@ describe Mysql do
     m.query 'drop procedure if exists test_proc'
     m.query 'create procedure test_proc() begin select 1 as a; select 2 as b; end'
     res = m.query 'call test_proc()'
-    assert{ res.entries == [['1']] }
+    assert{ res.entries == [[1]] }
     assert{ m.more_results? == true }
-    assert{ m.next_result.entries == [['2']] }
+    assert{ m.next_result.entries == [[2]] }
     assert{ m.more_results? == true }
     assert{ m.next_result == nil }
     assert{ m.more_results? == false }
@@ -557,12 +557,12 @@ describe Mysql do
     m.set_server_option(Mysql::OPTION_MULTI_STATEMENTS_ON)
     m.query('create temporary table t (i int)')
     res = m.query 'select 1; insert into t values (1),(2),(3); select 2'
-    assert{ res.entries == [['1']] }
+    assert{ res.entries == [[1]] }
     assert{ m.more_results? == true }
     assert{ m.next_result == nil }
     assert{ m.info == 'Records: 3  Duplicates: 0  Warnings: 0' }
     assert{ m.more_results? == true }
-    assert{ m.next_result.entries == [['2']] }
+    assert{ m.next_result.entries == [[2]] }
     assert{ m.more_results? == false }
   end
 
@@ -580,11 +580,11 @@ describe Mysql do
     end
 
     it '#data_seek set position of current record' do
-      assert{ @res.fetch_row == ['1', 'abc'] }
-      assert{ @res.fetch_row == ['2', 'defg'] }
-      assert{ @res.fetch_row == ['3', 'hi'] }
+      assert{ @res.fetch_row == [1, 'abc'] }
+      assert{ @res.fetch_row == [2, 'defg'] }
+      assert{ @res.fetch_row == [3, 'hi'] }
       @res.data_seek 1
-      assert{ @res.fetch_row == ['2', 'defg'] }
+      assert{ @res.fetch_row == [2, 'defg'] }
     end
 
     it '#fields returns array of field' do
@@ -619,26 +619,26 @@ describe Mysql do
     end
 
     it '#fetch_row returns one record as array for current record' do
-      assert{ @res.fetch_row == ['1', 'abc'] }
-      assert{ @res.fetch_row == ['2', 'defg'] }
-      assert{ @res.fetch_row == ['3', 'hi'] }
-      assert{ @res.fetch_row == ['4', nil] }
+      assert{ @res.fetch_row == [1, 'abc'] }
+      assert{ @res.fetch_row == [2, 'defg'] }
+      assert{ @res.fetch_row == [3, 'hi'] }
+      assert{ @res.fetch_row == [4, nil] }
       assert{ @res.fetch_row == nil }
     end
 
     it '#fetch_hash returns one record as hash for current record' do
-      assert{ @res.fetch_hash == {'id'=>'1', 'str'=>'abc'} }
-      assert{ @res.fetch_hash == {'id'=>'2', 'str'=>'defg'} }
-      assert{ @res.fetch_hash == {'id'=>'3', 'str'=>'hi'} }
-      assert{ @res.fetch_hash == {'id'=>'4', 'str'=>nil} }
+      assert{ @res.fetch_hash == {'id'=>1, 'str'=>'abc'} }
+      assert{ @res.fetch_hash == {'id'=>2, 'str'=>'defg'} }
+      assert{ @res.fetch_hash == {'id'=>3, 'str'=>'hi'} }
+      assert{ @res.fetch_hash == {'id'=>4, 'str'=>nil} }
       assert{ @res.fetch_hash == nil }
     end
 
     it '#fetch_hash(true) returns with table name' do
-      assert{ @res.fetch_hash(true) == {'t.id'=>'1', 't.str'=>'abc'} }
-      assert{ @res.fetch_hash(true) == {'t.id'=>'2', 't.str'=>'defg'} }
-      assert{ @res.fetch_hash(true) == {'t.id'=>'3', 't.str'=>'hi'} }
-      assert{ @res.fetch_hash(true) == {'t.id'=>'4', 't.str'=>nil} }
+      assert{ @res.fetch_hash(true) == {'t.id'=>1, 't.str'=>'abc'} }
+      assert{ @res.fetch_hash(true) == {'t.id'=>2, 't.str'=>'defg'} }
+      assert{ @res.fetch_hash(true) == {'t.id'=>3, 't.str'=>'hi'} }
+      assert{ @res.fetch_hash(true) == {'t.id'=>4, 't.str'=>nil} }
       assert{ @res.fetch_hash(true) == nil }
     end
 
@@ -647,38 +647,38 @@ describe Mysql do
     end
 
     it '#each iterate block with a record' do
-      expect = [["1","abc"], ["2","defg"], ["3","hi"], ["4",nil]]
+      expect = [[1, "abc"], [2, "defg"], [3, "hi"], [4, nil]]
       @res.each do |a|
         assert{ a == expect.shift }
       end
     end
 
     it '#each_hash iterate block with a hash' do
-      expect = [{"id"=>"1","str"=>"abc"}, {"id"=>"2","str"=>"defg"}, {"id"=>"3","str"=>"hi"}, {"id"=>"4","str"=>nil}]
+      expect = [{"id"=>1, "str"=>"abc"}, {"id"=>2, "str"=>"defg"}, {"id"=>3, "str"=>"hi"}, {"id"=>4, "str"=>nil}]
       @res.each_hash do |a|
         assert{ a == expect.shift }
       end
     end
 
     it '#each_hash(true): hash key has table name' do
-      expect = [{"t.id"=>"1","t.str"=>"abc"}, {"t.id"=>"2","t.str"=>"defg"}, {"t.id"=>"3","t.str"=>"hi"}, {"t.id"=>"4","t.str"=>nil}]
+      expect = [{"t.id"=>1, "t.str"=>"abc"}, {"t.id"=>2, "t.str"=>"defg"}, {"t.id"=>3,"t.str"=>"hi"}, {"t.id"=>4, "t.str"=>nil}]
       @res.each_hash(true) do |a|
         assert{ a == expect.shift }
       end
     end
 
     it '#each always returns records from the beginning' do
-      assert{ @res.each.entries == [["1", "abc"], ["2", "defg"], ["3", "hi"], ["4", nil]] }
-      assert{ @res.each.entries == [["1", "abc"], ["2", "defg"], ["3", "hi"], ["4", nil]] }
+      assert{ @res.each.entries == [[1, "abc"], [2, "defg"], [3, "hi"], [4, nil]] }
+      assert{ @res.each.entries == [[1, "abc"], [2, "defg"], [3, "hi"], [4, nil]] }
     end
 
     it '#row_tell returns position of current record, #row_seek set position of current record' do
-      assert{ @res.fetch_row == ['1', 'abc'] }
+      assert{ @res.fetch_row == [1, 'abc'] }
       pos = @res.row_tell
-      assert{ @res.fetch_row == ['2', 'defg'] }
-      assert{ @res.fetch_row == ['3', 'hi'] }
+      assert{ @res.fetch_row == [2, 'defg'] }
+      assert{ @res.fetch_row == [3, 'hi'] }
       @res.row_seek pos
-      assert{ @res.fetch_row == ['2', 'defg'] }
+      assert{ @res.fetch_row == [2, 'defg'] }
     end
 
     it '#free returns nil' do
@@ -687,6 +687,334 @@ describe Mysql do
 
     it '#server_status returns server status as Intger' do
       assert{ @res.server_status.is_a? Integer }
+    end
+  end
+
+  describe 'Mysql::Result: variable data' do
+    before do
+      @m = Mysql.connect(MYSQL_SERVER, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, MYSQL_PORT, MYSQL_SOCKET)
+      @m.query("set sql_mode=''")
+    end
+
+    after do
+      @m.close if @m
+    end
+
+    it '#fetch returns result-record' do
+      res = @m.query 'select 123, "abc", null'
+      assert{ res.fetch == [123, 'abc', nil] }
+    end
+
+    it '#fetch bit column (8bit)' do
+      @m.query 'create temporary table t (i bit(8))'
+      @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [
+          ["\x00".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\x7f".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+          ["\xff".force_encoding('ASCII-8BIT')],
+        ]
+      }
+    end
+
+    it '#fetch bit column (64bit)' do
+      @m.query 'create temporary table t (i bit(64))'
+      @m.query 'insert into t values (0),(-1),(4294967296),(18446744073709551615),(18446744073709551616)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [
+          ["\x00\x00\x00\x00\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
+          ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+          ["\x00\x00\x00\x01\x00\x00\x00\x00".force_encoding('ASCII-8BIT')],
+          ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+          ["\xff\xff\xff\xff\xff\xff\xff\xff".force_encoding('ASCII-8BIT')],
+        ]
+      }
+    end
+
+    it '#fetch tinyint column' do
+      @m.query 'create temporary table t (i tinyint)'
+      @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [-1], [127], [-128], [127], [-128]] }
+    end
+
+    it '#fetch tinyint unsigned column' do
+      @m.query 'create temporary table t (i tinyint unsigned)'
+      @m.query 'insert into t values (0),(-1),(127),(-128),(255),(-255),(256)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [0], [127], [0], [255], [0], [255]] }
+    end
+
+    it '#fetch smallint column' do
+      @m.query 'create temporary table t (i smallint)'
+      @m.query 'insert into t values (0),(-1),(32767),(-32768),(65535),(-65535),(65536)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [-1], [32767], [-32768], [32767], [-32768], [32767]] }
+    end
+
+    it '#fetch smallint unsigned column' do
+      @m.query 'create temporary table t (i smallint unsigned)'
+      @m.query 'insert into t values (0),(-1),(32767),(-32768),(65535),(-65535),(65536)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [0], [32767], [0], [65535], [0], [65535]] }
+    end
+
+    it '#fetch mediumint column' do
+      @m.query 'create temporary table t (i mediumint)'
+      @m.query 'insert into t values (0),(-1),(8388607),(-8388608),(16777215),(-16777215),(16777216)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [-1], [8388607], [-8388608], [8388607], [-8388608], [8388607]] }
+    end
+
+    it '#fetch mediumint unsigned column' do
+      @m.query 'create temporary table t (i mediumint unsigned)'
+      @m.query 'insert into t values (0),(-1),(8388607),(-8388608),(16777215),(-16777215),(16777216)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [0], [8388607], [0], [16777215], [0], [16777215]] }
+    end
+
+    it '#fetch int column' do
+      @m.query 'create temporary table t (i int)'
+      @m.query 'insert into t values (0),(-1),(2147483647),(-2147483648),(4294967295),(-4294967295),(4294967296)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [-1], [2147483647], [-2147483648], [2147483647], [-2147483648], [2147483647]] }
+    end
+
+    it '#fetch int unsigned column' do
+      @m.query 'create temporary table t (i int unsigned)'
+      @m.query 'insert into t values (0),(-1),(2147483647),(-2147483648),(4294967295),(-4294967295),(4294967296)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [0], [2147483647], [0], [4294967295], [0], [4294967295]] }
+    end
+
+    it '#fetch bigint column' do
+      @m.query 'create temporary table t (i bigint)'
+      @m.query 'insert into t values (0),(-1),(9223372036854775807),(-9223372036854775808),(18446744073709551615),(-18446744073709551615),(18446744073709551616)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [-1], [9223372036854775807], [-9223372036854775808], [9223372036854775807], [-9223372036854775808], [9223372036854775807]] }
+    end
+
+    it '#fetch bigint unsigned column' do
+      @m.query 'create temporary table t (i bigint unsigned)'
+      @m.query 'insert into t values (0),(-1),(9223372036854775807),(-9223372036854775808),(18446744073709551615),(-18446744073709551615),(18446744073709551616)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [0], [9223372036854775807], [0], [18446744073709551615], [0], [18446744073709551615]] }
+    end
+
+    it '#fetch float column' do
+      @m.query 'create temporary table t (i float)'
+      @m.query 'insert into t values (0),(-3.402823466E+38),(-1.175494351E-38),(1.175494351E-38),(3.402823466E+38)'
+      res = @m.query 'select i from t'
+      assert{ res.fetch[0] == 0.0 }
+      assert{ (res.fetch[0] - -3.40282E+38).abs < 0.000000001E+38 }
+      assert{ (res.fetch[0] - -1.17549E-38).abs < 0.000000001E-38 }
+      assert{ (res.fetch[0] -  1.17549E-38).abs < 0.000000001E-38 }
+      assert{ (res.fetch[0] -  3.40282E+38).abs < 0.000000001E+38 }
+    end
+
+    it '#fetch float unsigned column' do
+      @m.query 'create temporary table t (i float unsigned)'
+      @m.query 'insert into t values (0),(-3.402823466E+38),(-1.175494351E-38),(1.175494351E-38),(3.402823466E+38)'
+      res = @m.query 'select i from t'
+      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0.0 }
+      assert{ (res.fetch[0] -  1.17549E-38).abs < 0.000000001E-38 }
+      assert{ (res.fetch[0] -  3.40282E+38).abs < 0.000000001E+38 }
+    end
+
+    it '#fetch double column' do
+      @m.query 'create temporary table t (i double)'
+      @m.query 'insert into t values (0),(-1.7976931348623157E+308),(-2.2250738585072014E-308),(2.2250738585072014E-308),(1.7976931348623157E+308)'
+      res = @m.query 'select i from t'
+      assert{ res.fetch[0] == 0.0 }
+      assert{ (res.fetch[0] - -Float::MAX).abs < Float::EPSILON }
+      assert{ (res.fetch[0] - -Float::MIN).abs < Float::EPSILON }
+      assert{ (res.fetch[0] -  Float::MIN).abs < Float::EPSILON }
+      assert{ (res.fetch[0] -  Float::MAX).abs < Float::EPSILON }
+    end
+
+    it '#fetch double unsigned column' do
+      @m.query 'create temporary table t (i double unsigned)'
+      @m.query 'insert into t values (0),(-1.7976931348623157E+308),(-2.2250738585072014E-308),(2.2250738585072014E-308),(1.7976931348623157E+308)'
+      res = @m.query 'select i from t'
+      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0.0 }
+      assert{ res.fetch[0] == 0.0 }
+      assert{ (res.fetch[0] - Float::MIN).abs < Float::EPSILON }
+      assert{ (res.fetch[0] - Float::MAX).abs < Float::EPSILON }
+    end
+
+    it '#fetch decimal column' do
+      @m.query 'create temporary table t (i decimal(12,2))'
+      @m.query 'insert into t values (0),(9999999999),(-9999999999),(10000000000),(-10000000000)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [9999999999], [-9999999999], [BigDecimal('9999999999.99')], [BigDecimal('-9999999999.99')]] }
+    end
+
+    it '#fetch decimal unsigned column' do
+      @m.query 'create temporary table t (i decimal(12,2) unsigned)'
+      @m.query 'insert into t values (0),(9999999998),(9999999999),(-9999999998),(-9999999999),(10000000000),(-10000000000)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [9999999998], [9999999999], [0], [0], [BigDecimal('9999999999.99')], [0]] }
+    end
+
+    it '#fetch date column' do
+      @m.query 'create temporary table t (i date)'
+      @m.query "insert into t values ('0000-00-00'),('1000-01-01'),('9999-12-31')"
+      res = @m.query 'select i from t'
+      cols = res.fetch
+      assert{ cols == [nil] }
+      cols = res.fetch
+      assert{ cols == [Date.new(1000,1,1)] }
+      cols = res.fetch
+      assert{ cols == [Date.new(9999,12,31)] }
+    end
+
+    it '#fetch datetime column' do
+      @m.query 'create temporary table t (i datetime(6))'
+      @m.query "insert into t values ('0000-00-00 00:00:00'),('1000-01-01 00:00:00'),('2022-10-30 12:34:56.789'),('9999-12-31 23:59:59')"
+      res = @m.query 'select i from t'
+      assert{ res.fetch == [nil] }
+      assert{ res.fetch == [Time.new(1000,1,1)] }
+      assert{ res.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
+      assert{ res.fetch == [Time.new(9999,12,31,23,59,59)] }
+    end
+
+    it '#fetch timestamp column' do
+      @m.query 'create temporary table t (i timestamp(6))'
+      @m.query("insert into t values ('1970-01-02 00:00:00'),('2022-10-30 12:34:56.789'),('2037-12-30 23:59:59')")
+      res = @m.query 'select i from t'
+      assert{ res.fetch == [Time.new(1970,1,2)] }
+      assert{ res.fetch == [Time.new(2022,10,30,12,34,56789/1000r)] }
+      assert{ res.fetch == [Time.new(2037,12,30,23,59,59)] }
+    end
+
+    it '#fetch time column' do
+      @m.query 'create temporary table t (i time)'
+      @m.query "insert into t values ('-838:59:59'),(0),('838:59:59')"
+      res = @m.query 'select i from t'
+      assert{ res.fetch == [-(838*3600+59*60+59)] }
+      assert{ res.fetch == [0] }
+      assert{ res.fetch == [838*3600+59*60+59] }
+    end
+
+    it '#fetch year column' do
+      @m.query 'create temporary table t (i year)'
+      @m.query 'insert into t values (0),(70),(69),(1901),(2155)'
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[0], [1970], [2069], [1901], [2155]] }
+    end
+
+    it '#fetch char column' do
+      @m.query 'create temporary table t (i char(10))'
+      @m.query "insert into t values (null),('abc')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ['abc']] }
+    end
+
+    it '#fetch varchar column' do
+      @m.query 'create temporary table t (i varchar(10))'
+      @m.query "insert into t values (null),('abc')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ['abc']] }
+    end
+
+    it '#fetch binary column' do
+      @m.query 'create temporary table t (i binary(10))'
+      @m.query "insert into t values (null),('abc')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["abc\0\0\0\0\0\0\0"]] }
+    end
+
+    it '#fetch varbinary column' do
+      @m.query 'create temporary table t (i varbinary(10))'
+      @m.query "insert into t values (null),('abc')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["abc"]] }
+    end
+
+    it '#fetch tinyblob column' do
+      @m.query 'create temporary table t (i tinyblob)'
+      @m.query "insert into t values (null),('#{"a"*255}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["a"*255]] }
+    end
+
+    it '#fetch tinytext column' do
+      @m.query 'create temporary table t (i tinytext)'
+      @m.query "insert into t values (null),('#{"a"*255}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["a"*255]] }
+    end
+
+    it '#fetch blob column' do
+      @m.query 'create temporary table t (i blob)'
+      @m.query "insert into t values (null),('#{"a"*65535}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["a"*65535]] }
+    end
+
+    it '#fetch text column' do
+      @m.query 'create temporary table t (i text)'
+      @m.query "insert into t values (null),('#{"a"*65535}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["a"*65535]] }
+    end
+
+    it '#fetch mediumblob column' do
+      @m.query 'create temporary table t (i mediumblob)'
+      @m.query "insert into t values (null),('#{"a"*16777215}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ['a'*16777215]] }
+    end
+
+    it '#fetch mediumtext column' do
+      @m.query 'create temporary table t (i mediumtext)'
+      @m.query "insert into t values (null),('#{"a"*16777215}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ['a'*16777215]] }
+    end
+
+    it '#fetch longblob column' do
+      @m.query 'create temporary table t (i longblob)'
+      @m.query "insert into t values (null),('#{"a"*16777216}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["a"*16777216]] }
+    end
+
+    it '#fetch longtext column' do
+      @m.query 'create temporary table t (i longtext)'
+      @m.query "insert into t values (null),('#{"a"*16777216}')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], ["a"*16777216]] }
+    end
+
+    it '#fetch enum column' do
+      @m.query "create temporary table t (i enum('abc','def'))"
+      @m.query "insert into t values (null),(0),(1),(2),('abc'),('def'),('ghi')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], [''], ['abc'], ['def'], ['abc'], ['def'], ['']] }
+    end
+
+    it '#fetch set column' do
+      @m.query "create temporary table t (i set('abc','def'))"
+      @m.query "insert into t values (null),(0),(1),(2),(3),('abc'),('def'),('abc,def'),('ghi')"
+      res = @m.query 'select i from t'
+      assert{ res.entries == [[nil], [''], ['abc'], ['def'], ['abc,def'], ['abc'], ['def'], ['abc,def'], ['']] }
+    end
+
+    it '#fetch json column' do
+      if @m.server_version >= 50700
+        @m.query "create temporary table t (i json)"
+        @m.query "insert into t values ('123'),('{\"a\":1,\"b\":2,\"c\":3}'),('[1,2,3]')"
+        res = @m.query 'select i from t'
+        assert{ res.entries == [['123'], ['{"a": 1, "b": 2, "c": 3}'], ['[1, 2, 3]']] }
+      end
     end
   end
 
@@ -882,14 +1210,14 @@ describe Mysql do
       @s.execute '456'
       @s.execute true
       @s.execute false
-      assert{ @m.query('select * from t').entries == [['123'], ['456'], ['1'], ['0']] }
+      assert{ @m.query('select * from t').entries == [[123], [456], [1], [0]] }
     end
 
     it '#execute with various arguments' do
       @m.query 'create temporary table t (i int, c char(255), t timestamp)'
       @s.prepare 'insert into t values (?,?,?)'
       @s.execute 123, 'hoge', Time.local(2009,12,8,19,56,21)
-      assert{ @m.query('select * from t').fetch_row == ['123', 'hoge', '2009-12-08 19:56:21'] }
+      assert{ @m.query('select * from t').fetch_row == [123, 'hoge', Time.local(2009,12,8,19,56,21)] }
     end
 
     it '#execute with arguments that is invalid count raise error' do
@@ -954,7 +1282,7 @@ describe Mysql do
         it "#{n} is #{n}" do
           @s.prepare 'insert into t values (?)'
           @s.execute n
-          assert{ @m.query('select i from t').fetch == ["#{n}"] }
+          assert{ @m.query('select i from t').fetch == [n] }
         end
       end
     end
@@ -992,7 +1320,7 @@ describe Mysql do
         it "#{n} is #{n}" do
           @s.prepare 'insert into t values (?)'
           @s.execute n
-          assert{ @m.query('select i from t').fetch == ["#{n}"] }
+          assert{ @m.query('select i from t').fetch == [n] }
         end
       end
     end

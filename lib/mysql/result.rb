@@ -146,7 +146,7 @@ class Mysql
       @records.each_with_index do |rec, i|
         rec = @records[i] = rec.to_a if rec.is_a? RawRecord
         max_length.each_index do |j|
-          max_length[j] = rec[j].length if rec[j] && rec[j].length > max_length[j]
+          max_length[j] = rec[j].to_s.length if rec[j] && rec[j].to_s.length > max_length[j]
         end
       end
       max_length.each_with_index do |len, i|
