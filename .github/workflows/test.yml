@@ -21,7 +21,7 @@ jobs:
           MYSQL_DATABASE: test_for_mysql_ruby
         options: --health-cmd "mysqladmin ping"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
