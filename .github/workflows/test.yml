@@ -30,4 +30,4 @@ jobs:
       - run: docker restart ${{ job.services.mysql.id }}
       - run: while status="$(docker inspect -f '{{.State.Health.Status}}' ${{ job.services.mysql.id }})" && echo "$status" && test "$status" = starting; do sleep 1; done
       - run: bundle install
-      - run: bundle exec rake test
+      - run: bundle exec rake spec

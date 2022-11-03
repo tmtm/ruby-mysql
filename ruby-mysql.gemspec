@@ -14,4 +14,6 @@ Gem::Specification.new do |s|
   s.metadata['homepage_uri'] = 'http://github.com/tmtm/ruby-mysql'
   s.metadata['documentation_uri'] = 'https://www.rubydoc.info/gems/ruby-mysql'
   s.metadata['source_code_uri'] = 'http://github.com/tmtm/ruby-mysql'
+  s.add_development_dependency 'rspec'
+  s.add_development_dependency 'rspec-power_assert'
 end
