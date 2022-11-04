@@ -15,7 +15,7 @@ Gem::Specification.new do |s|
   s.metadata['documentation_uri'] = 'https://www.rubydoc.info/gems/ruby-mysql'
   s.metadata['source_code_uri'] = 'http://github.com/tmtm/ruby-mysql'
   s.metadata['rubygems_mfa_required'] = 'true'
+  s.add_development_dependency 'power_assert'
   s.add_development_dependency 'rspec'
-  s.add_development_dependency 'rspec-power_assert'
   s.add_development_dependency 'rubocop'
 end

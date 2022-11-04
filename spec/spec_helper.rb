@@ -1,12 +1,19 @@
 require 'rspec'
-
-# for power_assert
-Fixnum = Integer unless defined? Fixnum  # rubocop:disable Lint/UnifiedInteger
-Bignum = Integer unless defined? Bignum  # rubocop:disable Lint/UnifiedInteger
-require 'rspec-power_assert'
-RSpec::PowerAssert.example_assertion_alias :assert
-
+require 'power_assert'
 require 'mysql'
+
+class RSpec::Core::ExampleGroup  # rubocop:disable Style/ClassAndModuleChildren
+  def assert(&block)
+    PowerAssert.start(block, assertion_method: __callee__) do |pa|
+      result = pa.yield
+      message = pa.message_proc.call
+      unless result
+        ex = RSpec::Expectations::ExpectationNotMetError.new(message)
+        RSpec::Support.notify_failure(ex)
+      end
+    end
+  end
+end
 
 conf = "#{__dir__}/config.rb"
 File.write(conf, File.read("#{conf}.example")) unless File.exist? conf
