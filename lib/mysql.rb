@@ -646,6 +646,7 @@ class Mysql
     # @yield [Array] record data
     # @return [self] self. If block is not specified, this returns Enumerator.
     def each(&block)
+      data_seek(0)
       return enum_for(:each) unless block
       while rec = fetch
         block.call rec
@@ -658,6 +659,7 @@ class Mysql
     # @yield [Hash] record data
     # @return [self] self. If block is not specified, this returns Enumerator.
     def each_hash(with_table=nil, &block)
+      data_seek(0)
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
         block.call rec
@@ -883,6 +885,7 @@ class Mysql
     # @return [Mysql::Stmt] self
     # @return [Enumerator] If block is not specified
     def each(&block)
+      data_seek(0)
       return enum_for(:each) unless block
       while rec = fetch
         block.call rec
@@ -896,6 +899,7 @@ class Mysql
     # @return [Mysql::Stmt] self
     # @return [Enumerator] If block is not specified
     def each_hash(with_table=nil, &block)
+      data_seek(0)
       return enum_for(:each_hash, with_table) unless block
       while rec = fetch_hash(with_table)
         block.call rec

@@ -719,6 +719,18 @@ class TestMysql < Test::Unit::TestCase
       end
     end
 
+    test '#each_hash iterate block with a hash, after performing a count' do
+      expect = [{"id"=>"1","str"=>"abc"}, {"id"=>"2","str"=>"defg"}, {"id"=>"3","str"=>"hi"}, {"id"=>"4","str"=>nil}]
+      expect_count = expect.length
+      @res.count
+      block_count = 0
+      @res.each_hash do |a|
+        assert{ a == expect.shift }
+        block_count += 1
+      end
+      assert{ block_count == expect_count}
+    end
+
     test '#row_tell returns position of current record, #row_seek set position of current record' do
       assert{ @res.fetch_row == ['1', 'abc'] }
       pos = @res.row_tell
